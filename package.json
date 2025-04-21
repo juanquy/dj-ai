@@ -32,8 +32,8 @@
     "web-audio-beat-detector": "^8.2.0"
   },
   "optionalDependencies": {
-    "@tensorflow/tfjs-node": "^4.17.0",
-    "whisper-node": "^0.1.7"
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "whisper-node": "npm:null@^0.1.7"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
