@@ -60,9 +60,44 @@ class AudioMixer {
     // Initialize Web Audio API context
     if (!this.audioContext) {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.audioContext = new AudioContext();
+      
+      try {
+        // Create a new audio context with specific options
+        this.audioContext = new AudioContext({
+          latencyHint: 'interactive', // Use lower latency for better interactive performance
+          sampleRate: 44100 // Use standard sample rate
+        });
+        
+        console.log('AudioContext created with state:', this.audioContext.state);
+      } catch (err) {
+        console.error('Error creating AudioContext:', err);
+        // Fallback to basic creation if options fail
+        this.audioContext = new AudioContext();
+      }
+      
+      // Check if we need to fix for Safari/Mobile which may start suspended
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        console.log('AudioContext created in suspended state, attempting to resume');
+        
+        // Try an immediate resume
+        this.audioContext.resume().then(() => {
+          console.log('AudioContext resumed successfully during initialization');
+        }).catch(err => {
+          console.warn('Could not resume AudioContext during initialization:', err);
+          
+          // We'll try again when play() is called
+          console.log('Will attempt resume again when playback starts');
+        });
+      }
     } else if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+      // Context exists but is suspended, try to resume
+      console.log('Resuming existing suspended AudioContext');
+      
+      this.audioContext.resume().then(() => {
+        console.log('Existing AudioContext resumed successfully');
+      }).catch(err => {
+        console.warn('Error resuming existing AudioContext:', err);
+      });
     }
     
     // Create audio elements and processing nodes for each track
@@ -153,6 +188,9 @@ class AudioMixer {
       highEQ.connect(gainNode);
       gainNode.connect(this.audioContext.destination);
       
+      // Set flag to track if destination connection is maintained
+      this.isDestinationConnected = true;
+      
       // Set initial volume (only the first track starts at full volume)
       gainNode.gain.value = index === 0 ? 1 : 0;
       
@@ -170,7 +208,7 @@ class AudioMixer {
       
       // Add improved error handling with automatic retry
       let audioLoadRetries = 0;
-      const MAX_AUDIO_RETRIES = 3;
+      const MAX_AUDIO_RETRIES = 5; // Increased max retries
       
       const handleAudioError = (e) => {
         console.error(`Error loading track ${track.title}:`, e);
@@ -192,6 +230,15 @@ class AudioMixer {
             audio.src = streamUrl;
             audio.load(); // Explicitly reload
             
+            // Resume audio context if suspended
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+              this.audioContext.resume().then(() => {
+                console.log('AudioContext resumed successfully');
+              }).catch(ctxErr => {
+                console.error('Failed to resume AudioContext:', ctxErr);
+              });
+            }
+            
             if (this.isPlaying && index === this.currentTrackIndex) {
               audio.play().catch(err => {
                 console.error('Error during retry playback:', err);
@@ -200,6 +247,11 @@ class AudioMixer {
           }, 1000 * Math.pow(2, audioLoadRetries - 1)); // Exponential backoff: 1s, 2s, 4s
         } else {
           document.getElementById('mix-info').textContent = `Error loading track: ${track.title}. Please try another track.`;
+          
+          // Reset audio gain node to ensure it's not greyed out
+          if (this.gainNodes && this.gainNodes[index]) {
+            this.gainNodes[index].gain.value = index === this.currentTrackIndex ? 1 : 0;
+          }
           
           // If this is the current track, try to skip to next
           if (index === this.currentTrackIndex && this.tracks.length > 1) {
@@ -214,9 +266,24 @@ class AudioMixer {
       // Also catch other playback issues
       audio.addEventListener('stalled', () => {
         console.warn(`Playback stalled for track ${track.title}`);
-        // Only treat as error if it stays stalled for 5+ seconds
-        const stalledTimer = setTimeout(() => handleAudioError(new Error('Playback stalled')), 5000);
-        audio.addEventListener('playing', () => clearTimeout(stalledTimer), {once: true});
+        
+        // Try resuming audio context immediately
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+          this.audioContext.resume().then(() => {
+            console.log('AudioContext resumed after stall');
+          }).catch(err => {
+            console.error('Failed to resume AudioContext after stall:', err);
+          });
+        }
+        
+        // Only treat as error if it stays stalled for 8+ seconds (increased from 5 to allow more recovery time)
+        const stalledTimer = setTimeout(() => handleAudioError(new Error('Playback stalled')), 8000);
+        
+        // Clear timeout if playback resumes
+        audio.addEventListener('playing', () => {
+          console.log('Playback resumed after stall');
+          clearTimeout(stalledTimer);
+        }, {once: true});
       });
       
       // Set up transition to next track when this one reaches transition point
@@ -566,12 +633,58 @@ class AudioMixer {
    * Start playback
    */
   play() {
+    // Make sure audio context is running before playing
     if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+      console.log('Resuming suspended AudioContext before playback');
+      
+      // Important: Resume context first, then play audio after it's confirmed running
+      this.audioContext.resume().then(() => {
+        console.log('AudioContext successfully resumed, starting playback');
+        // Ensure all audio connections are properly established
+        this.ensureDestinationConnections();
+        this.startPlayback();
+      }).catch(err => {
+        console.error('Failed to resume AudioContext:', err);
+        // Try playing anyway as a fallback
+        this.ensureDestinationConnections();
+        this.startPlayback();
+      });
+    } else {
+      // Audio context is already running, play directly
+      // Ensure all audio connections are properly established first
+      this.ensureDestinationConnections();
+      this.startPlayback();
+    }
+  }
+  
+  /**
+   * Internal method to actually start playback after audio context is ready
+   */
+  startPlayback() {
+    this.isPlaying = true;
+    
+    // Reset gain node for current track to ensure it's properly audible
+    if (this.gainNodes && this.gainNodes[this.currentTrackIndex]) {
+      this.gainNodes[this.currentTrackIndex].gain.value = 1;
     }
     
-    this.isPlaying = true;
-    this.audioElements[this.currentTrackIndex].play();
+    // Handle playback with error catching
+    try {
+      const playPromise = this.audioElements[this.currentTrackIndex].play();
+      
+      // Handle promise rejection (some browsers return a promise from play())
+      if (playPromise !== undefined) {
+        playPromise.catch(err => {
+          console.error('Error starting playback:', err);
+          // If autoplay blocked, add a visual cue for the user
+          if (err.name === 'NotAllowedError') {
+            document.getElementById('mix-info').textContent = 'Playback requires user interaction - click play again';
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Exception during play():', err);
+    }
     
     // Apply any stored tempo adjustment
     if (this.tempoAdjustments[this.currentTrackIndex] !== 1.0) {
@@ -637,8 +750,23 @@ class AudioMixer {
     // Stop and disconnect all audio elements
     if (this.audioElements) {
       this.audioElements.forEach(audio => {
-        audio.pause();
-        audio.currentTime = 0;
+        try {
+          audio.pause();
+          audio.currentTime = 0;
+        } catch (e) {
+          console.warn('Error stopping audio element:', e);
+        }
+      });
+    }
+    
+    // Reset gain nodes to avoid greyed out player
+    if (this.gainNodes) {
+      this.gainNodes.forEach((gainNode, index) => {
+        try {
+          gainNode.gain.value = 0;
+        } catch (e) {
+          console.warn(`Error resetting gain node ${index}:`, e);
+        }
       });
     }
     
@@ -654,10 +782,25 @@ class AudioMixer {
       this.progressInterval = null;
     }
     
-    // Close audio context
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      // Just suspend instead of close to allow reuse
-      this.audioContext.suspend();
+    // Properly handle audio context
+    if (this.audioContext) {
+      if (this.audioContext.state === 'running') {
+        // Just suspend instead of close to allow reuse
+        this.audioContext.suspend().catch(err => {
+          console.warn('Error suspending audio context:', err);
+        });
+      } else if (this.audioContext.state === 'suspended') {
+        // Resume and then suspend to reset any stuck state
+        this.audioContext.resume().then(() => {
+          setTimeout(() => {
+            this.audioContext.suspend().catch(err => {
+              console.warn('Error re-suspending audio context:', err);
+            });
+          }, 100);
+        }).catch(err => {
+          console.warn('Error resuming audio context:', err);
+        });
+      }
     }
     
     // Reset UI
@@ -681,8 +824,19 @@ class AudioMixer {
     
     console.log(`Starting ${transitionType} transition - duration: ${transitionDuration}ms`);
     
-    // Start the next track
-    this.audioElements[nextIndex].play();
+    // Ensure all audio nodes are properly connected to the destination
+    this.ensureDestinationConnections();
+    
+    // Start the next track with error handling
+    this.audioElements[nextIndex].play().catch(err => {
+      console.error('Error playing next track during transition:', err);
+      // Try to recover by ensuring connections to output
+      this.ensureDestinationConnections();
+      // Try playing again
+      this.audioElements[nextIndex].play().catch(playErr => {
+        console.error('Still could not play next track after recovery attempt:', playErr);
+      });
+    });
     
     // Apply tempo adjustment if beatmatching is enabled and tracks have significant BPM difference
     if (this.beatmatchingEnabled && Math.abs(transition.bpmDifference) > 2) {
@@ -709,12 +863,49 @@ class AudioMixer {
       this.currentTrackIndex = nextIndex;
       this.isCrossfading = false;
       
+      // Ensure audio connections again at the end of transition
+      this.ensureDestinationConnections();
+      
       // Update player UI
       this.updatePlayerInfo();
       
       // Highlight current track in the track list
       this.updateCurrentTrackHighlight();
+      
+      console.log(`Transition complete, now playing track ${nextIndex}`);
     }, transitionDuration);
+  }
+  
+  /**
+   * Ensure all gain nodes are properly connected to the destination
+   * This fixes issues with audio disappearing after LTX video generation
+   */
+  ensureDestinationConnections() {
+    if (!this.audioContext || !this.gainNodes) return;
+    
+    // Check if we need to re-establish connections
+    this.gainNodes.forEach((gainNode, index) => {
+      try {
+        // Reconnect all nodes to destination - this is safe even if already connected
+        // Web Audio API will ignore duplicate connections
+        gainNode.connect(this.audioContext.destination);
+        
+        // If you have an analyser, make sure it's connected too
+        if (this.analyserNode) {
+          gainNode.connect(this.analyserNode);
+        }
+      } catch (err) {
+        // Ignore "already connected" errors
+        if (!err.toString().includes('already connected')) {
+          console.error(`Error ensuring destination connection for gain node ${index}:`, err);
+        }
+      }
+    });
+    
+    // Mark connections as established
+    this.isDestinationConnected = true;
+    console.log('Audio output connections verified and ensured');
+  }
   }
   
   /**
@@ -1038,6 +1229,11 @@ class AudioMixer {
     
     // Update EQ sliders to match current track
     this.updateEQSliders();
+    
+    // Update VJ visualizer with current track data for lyrics
+    if (window.vjVisualizer && currentTrack) {
+      window.vjVisualizer.setTrackData(currentTrack);
+    }
   }
   
   /**

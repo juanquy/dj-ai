@@ -1,12 +1,13 @@
 {
   "name": "djai",
   "version": "1.0.0",
-  "description": "Automatic AI DJ with SoundCloud integration and file uploads",
+  "description": "Automatic AI DJ with SoundCloud integration, file uploads, and AI-powered visualizations",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "analyze": "node src/audio-analyzer.js"
+    "analyze": "node src/audio-analyzer.js",
+    "install-ai": "npm install @tensorflow/tfjs-node whisper-node"
   },
   "dependencies": {
     "@huggingface/inference": "^2.8.1",
@@ -27,12 +28,18 @@
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.7",
     "three": "^0.159.0",
+    "web-audio-api": "^0.2.2",
     "web-audio-beat-detector": "^8.2.0"
+  },
+  "optionalDependencies": {
+    "@tensorflow/tfjs-node": "^4.17.0",
+    "whisper-node": "^0.1.7"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=14.0.0"
-  }
+  },
+  "notes": "For AI-powered lyrics detection, run 'npm run install-ai' to install the optional TensorFlow and Whisper models. These are not required for basic functionality."
 }

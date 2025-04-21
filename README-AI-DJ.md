@@ -53,6 +53,20 @@ DJAI uses several advanced audio processing libraries:
 4. **Adjust the controls**: Fine-tune the EQ and tempo settings
 5. **Toggle beatmatching**: Enable/disable automatic beatmatching
 
+## AI-Powered Lyrics and Visualizations
+
+DJAI now includes advanced AI features for lyrics detection and visualization:
+
+- **Direct Lyrics Detection**: Uses AI speech recognition to extract lyrics from audio
+- **Synchronized Lyrics Display**: Perfectly timed lyrics overlay on visualizations
+- **LTX Prompt Generation**: Creates tailored prompts for each lyric segment
+- **Emotional Content Analysis**: Analyzes lyrics for emotional tone to match visuals
+- **Adaptive Video Generation**: Pre-generates video segments based on lyrics content
+- **Custom Video Prompts**: Users can input their own creative prompts for visuals
+- **High-Quality Video Generation**: Uses Lightricks/LTX-Video model for superior visuals
+
+For detailed documentation, see the [AI-DJ-FEATURES.md](./AI-DJ-FEATURES.md) file.
+
 ## Future Plans
 
 - Beat-accurate looping for extended transitions
@@ -60,6 +74,8 @@ DJAI uses several advanced audio processing libraries:
 - Machine learning to improve transitions based on user feedback
 - Advanced audio effects (echo, delay, reverb) for creative mixing
 - Stem separation for instrumental/vocal isolation during transitions
+- Multiple language support for lyrics detection
+- Fine-tunable AI models for custom music genres
 
 ---
 

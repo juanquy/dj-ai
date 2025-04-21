@@ -16,6 +16,9 @@
   <script src="/js/audio-mixer.js"></script>
   <script src="/js/visualizer-shaders.js"></script>
   <script src="/js/vj-visualizer.js"></script>
+  <script src="/js/lyrics-visualizer.js"></script>
+  <script src="/js/lyrics-video-manager.js"></script>
+  <script src="/js/theme-switcher.js"></script>
   <!-- Load shaders and verify they're available -->
   <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -261,7 +264,11 @@
           initialIntensity: 0.7,
           quality: 'auto',
           useShaders: true,
-          contentMode: 'local'
+          contentMode: 'ai-generate', // Change to AI-generate mode to prioritize LTX
+          showLyrics: false, // Disable lyrics text visualization
+          useLTXVideo: true, // Keep lyrics-enhanced video generation enabled
+          useLyricsVideoMode: false, // Disable segmented video mode but keep LTX generation
+          preserveAudioConnections: true // IMPORTANT: Add this flag to ensure audio connections are preserved
         });
         
         console.log('VJ Visualizer instance created');
@@ -274,14 +281,25 @@
         const startResult = window.vjVisualizer.start();
         console.log('Visualizer start result:', startResult);
         
-        // Set content mode to local to ensure videos work
-        window.vjVisualizer.contentMode = 'local';
+        // Force to AI generation mode to ensure LTX videos with lyrics are prioritized
+        window.vjVisualizer.contentMode = 'ai-generate';
+        window.vjVisualizer.useLTXVideo = true;
+        window.vjVisualizer.showLyrics = false;
         
         // Force load content
         setTimeout(() => {
-          console.log('Forcing initial content load');
+          console.log('Forcing initial content load with LTX enabled');
           window.vjVisualizer.loadContent({ force: true });
+          
+          // Create a fallback for the initial load if LTX not yet connected
+          if (!window.vjVisualizer.contentCache.some(c => c.source === 'ltx')) {
+            console.log('No LTX content in cache, requesting generation');
+            window.vjVisualizer.generateLTXContent().then(content => {
+              if (content) window.vjVisualizer.applyVideoContent(content);
+            });
+          }
         }, 1000);
+        
       } catch (err) {
         console.error('Error initializing VJ Visualizer:', err);
       }
@@ -1561,12 +1579,23 @@
             console.log("Connecting gain nodes to analyzer");
             mixer.gainNodes.forEach((gainNode, index) => {
               try {
+                // Connect the gainNode to the analyser
                 gainNode.connect(analyserNode);
                 console.log(`Connected gain node ${index} to analyzer`);
+                
+                // CRITICAL FIX: We need to make sure the audio is connected to the destination as well,
+                // since the LTX video generation might have disconnected it
+                if (!mixer.isDestinationConnected) {
+                  gainNode.connect(audioContext.destination);
+                  console.log(`Re-connected gain node ${index} to audio destination`);
+                }
               } catch (err) {
                 console.error(`Error connecting gain node ${index}:`, err);
               }
             });
+            
+            // Mark as connected to prevent duplicate connections
+            mixer.isDestinationConnected = true;
           }
           
           // Restart the VJ visualizer to ensure it's active
@@ -1634,74 +1663,7 @@
         mixDetails.appendChild(transitionInfo);
       }
       
-      // Enhanced theme switcher functionality
-      const themeToggle = document.getElementById('theme-toggle');
-      
-      if (themeToggle) {
-        // Function to apply theme
-        const applyTheme = (themeName) => {
-          // Set the theme attribute on both html and body elements for maximum compatibility
-          document.documentElement.setAttribute('data-theme', themeName);
-          document.body.setAttribute('data-theme', themeName);
-          
-          // Store the theme preference
-          localStorage.setItem('theme', themeName);
-          
-          // Update the toggle state
-          if (themeToggle) {
-            themeToggle.checked = themeName === 'dark';
-          }
-          
-          // Update meta theme-color for mobile browsers
-          const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-          if (metaThemeColor) {
-            metaThemeColor.setAttribute('content', themeName === 'dark' ? '#121212' : '#ff5500');
-          }
-          
-          console.log('Theme applied:', themeName);
-        };
-        
-        // Check for saved theme preference, OS preference, or use default light theme
-        const getSavedTheme = () => {
-          // First check URL parameters
-          const urlParams = new URLSearchParams(window.location.search);
-          const themeParam = urlParams.get('theme');
-          if (themeParam === 'dark' || themeParam === 'light') {
-            return themeParam;
-          }
-          
-          // Then check localStorage
-          const savedTheme = localStorage.getItem('theme');
-          if (savedTheme) return savedTheme;
-          
-          // Then check OS preference
-          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            return 'dark';
-          }
-          
-          // Default to light
-          return 'light';
-        };
-        
-        // Apply the saved theme on page load
-        const initialTheme = getSavedTheme();
-        applyTheme(initialTheme);
-        
-        // Add event listener for theme toggle
-        themeToggle.addEventListener('change', function(e) {
-          const newTheme = e.target.checked ? 'dark' : 'light';
-          applyTheme(newTheme);
-        });
-        
-        // Listen for OS theme changes
-        if (window.matchMedia) {
-          window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-            if (!localStorage.getItem('theme')) { // Only auto-switch if user hasn't explicitly set a preference
-              applyTheme(e.matches ? 'dark' : 'light');
-            }
-          });
-        }
-      }
+      // Theme switcher is now managed by the global theme-switcher.js
     });
   </script>
 </body>

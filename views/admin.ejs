@@ -4,8 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>DJAI Admin - User Management</title>
+  <meta name="theme-color" content="#ff5500">
   <link rel="stylesheet" href="/styles.css">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <script src="/js/theme-switcher.js"></script>
   <style>
     /* Admin-specific styles */
     .admin-container {
@@ -216,6 +218,13 @@
       <h1>DJAI Admin Dashboard</h1>
       <div class="user-info">
         <span><%= userName %></span>
+        <div class="theme-switch">
+          <span class="theme-switch-label">Theme</span>
+          <label class="theme-switch-toggle">
+            <input type="checkbox" id="theme-toggle">
+            <span class="theme-switch-slider"></span>
+          </label>
+        </div>
         <a href="/" class="button">Return to App</a>
       </div>
     </div>

@@ -1,6 +1,7 @@
 /**
  * DJAI Advanced Audio Analyzer
  * Handles detailed analysis of audio files for advanced DJ mixing
+ * Enhanced with AI-based lyrics detection and LTX prompt generation
  */
 
 const fs = require('fs');
@@ -9,12 +10,31 @@ const { EssentiaWASM, EssentiaJS } = require('essentia.js');
 const Meyda = require('meyda');
 const mm = require('music-metadata');
 const { AudioContext } = require('web-audio-api');
+const fetch = require('node-fetch');
+const os = require('os');
+const { spawn } = require('child_process');
+const lyricsService = require('./lyrics-service');
+
+// Try to import optional AI libraries for lyrics detection
+let whisper;
+try {
+  // For speech-to-text (lyrics detection)
+  whisper = require('whisper-node');
+} catch (err) {
+  console.log('Whisper-node not installed, falling back to alternative methods for lyrics detection');
+}
 
 // Initialize Essentia 
 let essentia;
 
 // Cache for analyzed tracks to avoid repeat processing
 const analysisCache = new Map();
+
+// Cache for lyrics specifically
+const lyricsCache = new Map();
+
+// Temp directory for audio processing
+const tempDir = path.join(os.tmpdir(), 'djai-analysis');
 
 /**
  * Initialize the audio analyzer
@@ -24,7 +44,28 @@ async function initialize() {
     // Initialize EssentiaJS
     const wasmModule = await EssentiaWASM();
     essentia = new EssentiaJS(wasmModule);
+    
+    // Ensure temp directory exists
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    // Initialize Whisper model if available
+    let whisperInitialized = false;
+    if (whisper) {
+      try {
+        // Use base model for faster processing but still decent accuracy
+        global.whisperModel = new whisper.Whisper('base');
+        await global.whisperModel.load();
+        whisperInitialized = true;
+        console.log('Whisper model initialized for lyrics detection');
+      } catch (whisperError) {
+        console.error('Error initializing Whisper model:', whisperError);
+      }
+    }
+    
     console.log('Audio analyzer initialized successfully');
+    console.log(`Lyrics detection: ${whisperInitialized ? 'AI-enabled' : 'Using external API only'}`);
     return true;
   } catch (error) {
     console.error('Failed to initialize audio analyzer:', error);
@@ -377,12 +418,364 @@ function decodeAudioFile(audioData, audioContext) {
   });
 }
 
+/**
+ * Detect lyrics directly from an audio file using Whisper model
+ * @param {string} audioPath - Path to the audio file
+ * @param {Object} trackData - Additional track metadata
+ * @returns {Promise<Object>} Detected lyrics with timing information
+ */
+async function detectLyrics(audioPath, trackData = {}) {
+  try {
+    console.log(`Detecting lyrics from ${audioPath}`);
+    
+    // Generate a unique ID for this track
+    const trackId = trackData.id || `track-${path.basename(audioPath)}`;
+    
+    // Check cache first
+    const cachedLyrics = lyricsCache.get(trackId);
+    if (cachedLyrics) {
+      console.log(`Returning cached lyrics for track ${trackId}`);
+      return cachedLyrics;
+    }
+    
+    let detectedLyrics = '';
+    let timingData = null;
+    let source = 'none';
+    
+    // First attempt: Look up lyrics by track info if we have it
+    if (trackData.title) {
+      try {
+        const trackInfo = lyricsService.extractTrackInfo(trackData);
+        console.log(`Looking up lyrics for: ${trackInfo.artist} - ${trackInfo.title}`);
+        const lookupLyrics = await lyricsService.getLyrics(trackInfo.artist, trackInfo.title);
+        
+        if (lookupLyrics && !lookupLyrics.includes('[No lyrics found')) {
+          console.log('Found lyrics through lookup API');
+          detectedLyrics = lookupLyrics;
+          source = 'api';
+        }
+      } catch (lookupError) {
+        console.error('Error looking up lyrics:', lookupError);
+      }
+    }
+    
+    // Second attempt: Use Whisper model for transcription if available
+    if ((!detectedLyrics || detectedLyrics.length < 50) && global.whisperModel) {
+      try {
+        console.log('Attempting to detect lyrics with Whisper model');
+        
+        // Transcribe audio
+        const result = await global.whisperModel.transcribe(audioPath, {
+          language: 'en',  // or 'auto' for language detection
+          word_timestamps: true  // get timing for each word
+        });
+        
+        if (result && result.text) {
+          // Process the transcription into lyrics format
+          detectedLyrics = formatTranscriptionAsLyrics(result.text);
+          
+          // Extract timing data if available
+          if (result.segments) {
+            timingData = result.segments.map(segment => ({
+              start: segment.start * 1000, // convert to ms
+              end: segment.end * 1000,
+              text: segment.text
+            }));
+          }
+          
+          source = 'whisper';
+          console.log('Successfully detected lyrics with Whisper model');
+        }
+      } catch (whisperError) {
+        console.error('Error detecting lyrics with Whisper:', whisperError);
+      }
+    }
+    
+    // Third attempt: Try with FFmpeg as a fallback
+    if (!detectedLyrics || detectedLyrics.length < 50) {
+      try {
+        const ffmpegLyrics = await detectLyricsWithFFmpeg(audioPath);
+        if (ffmpegLyrics && ffmpegLyrics.length > 50) {
+          detectedLyrics = ffmpegLyrics;
+          source = 'ffmpeg';
+        }
+      } catch (ffmpegError) {
+        console.error('Error detecting lyrics with FFmpeg:', ffmpegError);
+      }
+    }
+    
+    // Fallback: Generate placeholder lyrics
+    if (!detectedLyrics || detectedLyrics.length < 50) {
+      if (trackData.title) {
+        const trackInfo = lyricsService.extractTrackInfo(trackData);
+        detectedLyrics = await lyricsService.generateFakeLyrics(trackInfo.artist, trackInfo.title);
+        source = 'generated';
+      } else {
+        detectedLyrics = 'No lyrics detected for this track.';
+        source = 'none';
+      }
+    }
+    
+    // Cache the results
+    const result = {
+      text: detectedLyrics,
+      timing: timingData,
+      source: source
+    };
+    
+    lyricsCache.set(trackId, result);
+    return result;
+  } catch (error) {
+    console.error('Error detecting lyrics:', error);
+    return {
+      text: 'Error detecting lyrics.',
+      timing: null,
+      source: 'error'
+    };
+  }
+}
+
+/**
+ * Detect lyrics using FFmpeg with speech recognition
+ * This is a fallback method when Whisper is not available
+ * @param {string} audioPath - Path to the audio file
+ * @returns {Promise<string>} Detected lyrics text
+ */
+async function detectLyricsWithFFmpeg(audioPath) {
+  return new Promise((resolve, reject) => {
+    // This is a placeholder - in a real implementation, 
+    // you'd use FFmpeg with a speech recognition API
+    // For now, return empty string so we fall back to API or generated lyrics
+    resolve('');
+  });
+}
+
+/**
+ * Format raw transcription into lyrics format
+ * @param {string} transcription - Raw transcription text
+ * @returns {string} - Formatted lyrics
+ */
+function formatTranscriptionAsLyrics(transcription) {
+  if (!transcription) return '';
+  
+  // Basic formatting - split into lines at punctuation
+  let formatted = transcription
+    .replace(/\./g, '.\n')
+    .replace(/\?/g, '?\n')
+    .replace(/!/g, '!\n')
+    .replace(/;/g, ';\n');
+  
+  // Attempt to identify chorus by repeating phrases
+  const lines = formatted.split('\n');
+  const lineFrequency = {};
+  
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (trimmed.length > 10) { // Only consider substantial lines
+      lineFrequency[trimmed] = (lineFrequency[trimmed] || 0) + 1;
+    }
+  });
+  
+  // Identify potential chorus lines (repeated 2+ times)
+  const chorusLines = Object.entries(lineFrequency)
+    .filter(([line, count]) => count >= 2)
+    .map(([line]) => line);
+  
+  // Mark chorus sections
+  if (chorusLines.length > 0) {
+    let inChorus = false;
+    let newLines = [];
+    
+    lines.forEach(line => {
+      const trimmed = line.trim();
+      
+      // Detect start of chorus
+      if (!inChorus && chorusLines.some(cl => trimmed.includes(cl))) {
+        newLines.push('[Chorus]');
+        inChorus = true;
+      } 
+      // Detect end of chorus
+      else if (inChorus && !chorusLines.some(cl => trimmed.includes(cl)) && trimmed.length > 10) {
+        newLines.push('[Verse]');
+        inChorus = false;
+      }
+      
+      newLines.push(line);
+    });
+    
+    formatted = newLines.join('\n');
+  }
+  
+  // Add verse marker at beginning if no sections detected
+  if (!formatted.includes('[Verse]') && !formatted.includes('[Chorus]')) {
+    formatted = '[Verse]\n' + formatted;
+  }
+  
+  return formatted;
+}
+
+/**
+ * Create an LTX prompt from a segment and audio features
+ * @param {string} text - Segment text (lyrics)
+ * @param {Object} features - Audio features for this segment
+ * @returns {string} - LTX prompt
+ */
+function createLTXPromptFromSegment(text, features) {
+  // Use the lyricsBufferService methods to analyze and create prompts
+  const lyricsBufferService = require('./lyrics-buffer-service');
+  
+  // Analyze emotional tone
+  const emotion = lyricsBufferService.analyzeEmotionalTone(text);
+  const keywords = lyricsBufferService.extractKeywords(text);
+  const style = lyricsBufferService.determineStyleFromLyrics(text);
+  
+  // Get audio feature descriptions
+  const energyLevel = features.energy > 0.7 ? 'high-energy' : 
+                      (features.energy < 0.4 ? 'ambient' : 'moderate');
+  
+  const bpm = features.bpm || 120;
+  
+  // Build the prompt
+  let prompt = `${emotion} ${energyLevel} visualization at ${bpm} BPM`;
+  
+  // Add lyrics if available
+  if (text && text.length > 0 && !text.includes('No lyrics')) {
+    const lines = text.split('\n').filter(line => line.trim().length > 0);
+    // Get a representative line (not too long, not too short)
+    const sortedLines = [...lines].sort((a, b) => 
+      Math.abs(15 - a.length) - Math.abs(15 - b.length)
+    );
+    const mainLine = sortedLines[0] || lines[0] || text;
+    
+    prompt += ` with lyrics: "${mainLine}"`;
+  }
+  
+  // Add keywords for stronger visual theming
+  if (keywords.length > 0) {
+    prompt += `, featuring ${keywords.slice(0, 3).join(', ')}`;
+  }
+  
+  // Add style information
+  prompt += `, in ${style} style`;
+  
+  // Add frequency information if available
+  if (features.energyBands && features.energyBands.length > 0) {
+    const avgBands = features.energyBands.reduce(
+      (acc, band) => {
+        acc.low += band.lowEnergy;
+        acc.mid += band.midEnergy;
+        acc.high += band.highEnergy;
+        return acc;
+      }, 
+      { low: 0, mid: 0, high: 0 }
+    );
+    
+    const count = features.energyBands.length;
+    avgBands.low /= count;
+    avgBands.mid /= count;
+    avgBands.high /= count;
+    
+    if (avgBands.low > 0.7) {
+      prompt += ', with strong bass visualization';
+    }
+    if (avgBands.high > 0.7) {
+      prompt += ', with bright high frequency visuals';
+    }
+  }
+  
+  return prompt;
+}
+
+/**
+ * Generate LTX prompts for a track with segmented lyrics
+ * @param {string} audioPath - Path to the audio file
+ * @param {Object} trackData - Track metadata
+ * @returns {Promise<Array>} Array of LTX prompts with timing info
+ */
+async function generateLTXPrompts(audioPath, trackData = {}) {
+  try {
+    // First, analyze the track
+    const analysis = await analyzeTrackFile(audioPath);
+    
+    // Then, get the lyrics
+    const lyrics = await detectLyrics(audioPath, trackData);
+    
+    // Calculate segment duration
+    const duration = analysis.format.duration * 1000; // convert to ms
+    const lyricsBufferService = require('./lyrics-buffer-service');
+    
+    // Segment the lyrics
+    let segments;
+    
+    // If we have timing data from Whisper, use it
+    if (lyrics.timing && lyrics.timing.length > 0) {
+      segments = lyrics.timing.map(segment => ({
+        lines: [segment.text],
+        text: segment.text,
+        startTime: segment.start,
+        endTime: segment.end,
+        duration: segment.end - segment.start,
+        progress: segment.start / duration
+      }));
+    } else {
+      // Otherwise use the buffer service to segment lyrics
+      segments = lyricsBufferService.segmentLyrics(lyrics.text, duration);
+    }
+    
+    // Create LTX prompts for each segment
+    const prompts = segments.map(segment => {
+      // Find audio features for this segment based on time
+      // For simplicity, we'll use a basic approach to map segment to audio features
+      const segmentProgress = segment.startTime / duration;
+      
+      // Use rhythm analysis if available
+      let segmentFeatures = {
+        bpm: analysis.rhythm?.bpm || 120,
+        key: analysis.rhythm?.key || 'C',
+        scale: analysis.rhythm?.scale || 'major',
+        energy: 0.5
+      };
+      
+      // Add energy bands if available
+      if (analysis.rhythm && analysis.rhythm.energyBands) {
+        const bandIndex = Math.floor(segmentProgress * analysis.rhythm.energyBands.length);
+        if (bandIndex < analysis.rhythm.energyBands.length) {
+          segmentFeatures.energyBands = [analysis.rhythm.energyBands[bandIndex]];
+        }
+      }
+      
+      // Create the prompt
+      const prompt = createLTXPromptFromSegment(segment.text, segmentFeatures);
+      
+      return {
+        startTime: segment.startTime,
+        endTime: segment.endTime,
+        text: segment.text,
+        prompt: prompt,
+        audioFeatures: {
+          bpm: segmentFeatures.bpm,
+          energy: segmentFeatures.energy,
+          key: segmentFeatures.key,
+          scale: segmentFeatures.scale
+        }
+      };
+    });
+    
+    return prompts;
+  } catch (error) {
+    console.error('Error generating LTX prompts:', error);
+    return [];
+  }
+}
+
 // Export the API
 module.exports = {
   initialize,
   analyzeTrackFile,
   analyzeStream,
-  findBestTransition
+  findBestTransition,
+  detectLyrics,
+  generateLTXPrompts
 };
 
 // If this script is run directly, initialize and provide CLI functionality

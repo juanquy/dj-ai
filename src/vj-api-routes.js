@@ -7,6 +7,8 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
 const router = express.Router();
+const lyricsService = require('./lyrics-service');
+const lyricsBufferService = require('./lyrics-buffer-service');
 
 // Import Hugging Face SDK if available
 let HfInference;
@@ -272,7 +274,7 @@ router.post('/content/ai-generate', async (req, res) => {
  */
 router.post('/content/ltx-generate', async (req, res) => {
   try {
-    const { audioFeatures, prompt, style = 'neon' } = req.body;
+    const { audioFeatures, prompt, style = 'neon', trackId, trackData, isCustomPrompt } = req.body;
     
     // Process audio features to refine prompt
     const bpm = audioFeatures?.bpm || 120;
@@ -281,7 +283,122 @@ router.post('/content/ltx-generate', async (req, res) => {
     const energyLevel = energy > 0.7 ? 'high-energy' : (energy < 0.3 ? 'ambient' : 'moderate');
     
     // Create dynamic prompt based on audio analysis
-    const finalPrompt = prompt || `${style} music visualization at ${bpm} BPM with ${energyLevel} movement, abstract digital art`;
+    let finalPrompt = prompt || `${style} music visualization at ${bpm} BPM with ${energyLevel} movement, abstract digital art`;
+    
+    // Try to fetch lyrics if trackId or trackData is provided - ENHANCED LYRICS HANDLING
+    let lyrics = null;
+    let trackInfo = null;
+    if (trackId || trackData) {
+      try {
+        // Check if we already have lyrics cached
+        const lyricsKey = trackId ? `track-${trackId}` : null;
+        const cachedLyrics = lyricsKey ? apiCache.ltx.get(lyricsKey) : null;
+        
+        if (cachedLyrics && cachedLyrics.data && cachedLyrics.data.lyrics) {
+          console.log('Using cached lyrics for track');
+          lyrics = cachedLyrics.data.lyrics;
+          trackInfo = cachedLyrics.data.trackInfo;
+        } 
+        // Only fetch if we don't have cached lyrics
+        else if (trackData) {
+          console.log('Fetching lyrics for track:', trackData.title);
+          trackInfo = lyricsService.extractTrackInfo(trackData);
+          
+          console.log('Extracted track info:', trackInfo);
+          
+          // Make extra effort to get lyrics
+          try {
+            // First try with extracted track info
+            lyrics = await lyricsService.getLyrics(trackInfo.artist, trackInfo.title);
+            console.log('Fetched lyrics with track info extraction');
+            
+            // If lyrics are too short or empty, try with original title/artist
+            if (!lyrics || lyrics.length < 50) {
+              console.log('Lyrics too short, trying with original track info');
+              const originalArtist = trackData.user?.username || trackInfo.artist;
+              const originalTitle = trackData.title || trackInfo.title;
+              
+              lyrics = await lyricsService.getLyrics(originalArtist, originalTitle);
+              console.log('Fetched lyrics with original track info');
+            }
+          } catch (innerError) {
+            console.error('Error in lyrics fetching, trying fallback method:', innerError);
+            
+            // Last attempt with any available info
+            const artist = trackData.user?.username || trackInfo.artist || 'Unknown';
+            const title = trackData.title || trackInfo.title || 'Unknown';
+            
+            try {
+              lyrics = await lyricsService.getLyrics(artist, title);
+              console.log('Fetched lyrics with fallback method');
+            } catch (fallbackError) {
+              console.error('All lyrics fetching methods failed:', fallbackError);
+            }
+          }
+          
+          // Cache the lyrics
+          if (lyricsKey && lyrics) {
+            console.log('Caching lyrics for future use');
+            apiCache.ltx.set(lyricsKey, { 
+              data: { lyrics, trackInfo },
+              timestamp: Date.now() 
+            });
+          }
+        }
+        
+        // If we have lyrics and it's not a custom prompt, enhance the prompt with lyrics
+      // If it is a custom prompt, just store the lyrics for the response but don't modify the prompt
+      if (lyrics) {
+        // Parse the full lyrics for semantics and extract key themes
+        let keyThemes = [];
+        const lyricsLines = lyrics.split('\n').filter(line => line.trim().length > 0);
+        
+        // Find common words and phrases (simplified approach)
+        const wordCounts = {};
+        const skipWords = ['the', 'and', 'to', 'a', 'it', 'I', 'in', 'my', 'you', 'for', 'of', 'on', 'is', 'are'];
+        
+        // Count words for themes
+        lyricsLines.forEach(line => {
+          const words = line.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+          words.forEach(word => {
+            if (word.length > 3 && !skipWords.includes(word)) {
+              wordCounts[word] = (wordCounts[word] || 0) + 1;
+            }
+          });
+        });
+        
+        // Get top themes (words that appear most frequently)
+        keyThemes = Object.entries(wordCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(entry => entry[0]);
+        
+        // Extract multiple snippets from beginning, middle, and end
+        const beginSnippet = lyricsService.formatLyrics(lyricsLines.slice(0, 4).join('\n'), 3);
+        
+        const middleStart = Math.floor(lyricsLines.length / 2) - 2;
+        const middleSnippet = lyricsService.formatLyrics(
+          lyricsLines.slice(middleStart, middleStart + 4).join('\n'), 3
+        );
+        
+        const endStart = Math.max(0, lyricsLines.length - 4);
+        const endSnippet = lyricsService.formatLyrics(
+          lyricsLines.slice(endStart).join('\n'), 3
+        );
+        
+        // If not a custom prompt, combine everything into a comprehensive prompt
+        if (!isCustomPrompt) {
+          finalPrompt = `${finalPrompt}. Create visuals based on song themes: ${keyThemes.join(', ')}. Opening lyrics: "${beginSnippet}". Middle part: "${middleSnippet}". Ending: "${endSnippet}"`;
+          console.log('Added comprehensive lyrics to auto-generated prompt');
+        } else {
+          console.log('Using custom prompt with detected lyrics available as context');
+        }
+      }
+      } catch (lyricsError) {
+        console.error('Error adding lyrics to prompt:', lyricsError);
+        // Continue without lyrics if there's an error
+      }
+    }
     
     // Calculate cache key based on prompt and audio features
     const cacheKey = `${finalPrompt}-${bpm}-${energyLevel}`;
@@ -290,6 +407,10 @@ router.post('/content/ltx-generate', async (req, res) => {
     // Check cache first
     if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_EXPIRATION) {
       console.log('Returning cached LTX generated content');
+      // Add lyrics to the cached data if we have them
+      if (lyrics && !cachedData.data.lyrics) {
+        cachedData.data.lyrics = lyrics;
+      }
       return res.json(cachedData.data);
     }
     
@@ -297,6 +418,10 @@ router.post('/content/ltx-generate', async (req, res) => {
     if (!HUGGING_FACE_API_KEY) {
       console.log('No Hugging Face API key, returning demo video content');
       const demoData = generateDemoLTXContent(finalPrompt, style, bpm);
+      // Add lyrics to the demo data
+      if (lyrics) {
+        demoData.lyrics = lyrics;
+      }
       apiCache.ltx.set(cacheKey, { data: demoData, timestamp: Date.now() });
       return res.json(demoData);
     }
@@ -304,17 +429,27 @@ router.post('/content/ltx-generate', async (req, res) => {
     console.log(`Generating LTX video with prompt: "${finalPrompt}"`);
     
     try {
-      // Create parameters for video generation
-      // Adjust these based on the specific model requirements
+      // Create parameters for Lightricks/LTX-Video model
+      // Parameters adjusted based on model specs and music properties
       const parameters = {
+        // LTX-Video works best with resolutions divisible by 32
+        width: 576, // 576 is divisible by 32
+        height: 320, // 320 is divisible by 32
+        
+        // LTX model requires num_frames divisible by 8+1
         num_inference_steps: Math.min(50, 20 + Math.floor(energy * 30)), // More steps for higher quality
-        fps: Math.min(24, Math.max(8, Math.floor(bpm/10))), // Dynamic FPS based on tempo
-        num_frames: 24, // Default number of frames to generate
+        num_frames: 25, // 24+1, divisible by 8+1 for LTX model
+        fps: 24, // LTX-Video works well at 24 FPS
+        
+        // Quality control parameters
         guidance_scale: 7.5,
-        width: 576,
-        height: 320, // Lower resolution for performance
-        motion_bucket_id: Math.floor(bassEnergy * 100), // Control motion intensity with bass energy
-        noise_aug_strength: 0.02 // Control noise/grain in generation
+        
+        // Optional parameters for LTX
+        seed: Math.floor(Math.random() * 1000000), // Random seed for variety
+        negative_prompt: "blurry, low quality, distorted, pixelated, low resolution",
+        
+        // These were specific to Stability's model, but we'll keep adapted versions for LTX
+        motion_strength: Math.min(0.95, 0.5 + (bassEnergy * 0.5)), // Control motion intensity with bass energy
       };
       
       if (HfInference) {
@@ -322,11 +457,11 @@ router.post('/content/ltx-generate', async (req, res) => {
         console.log('Using Hugging Face SDK for video generation');
         const hf = new HfInference(HUGGING_FACE_API_KEY);
         
-        // Select the appropriate model
-        // Using Stability AI's SVD (Stable Video Diffusion) model
-        const modelId = 'stabilityai/stable-video-diffusion-img2vid-xt';
+        // Using Lightricks LTX-Video for high-quality video generation
+        const modelId = 'Lightricks/LTX-Video';
         
-        // First generate an image as a keyframe with text-to-image
+        // For Lightricks/LTX-Video, we can use text-to-video directly, but let's also
+        // generate a keyframe for preview purposes using Stable Diffusion
         const initialImageBlob = await hf.textToImage({
           model: 'stabilityai/stable-diffusion-xl-base-1.0',
           inputs: finalPrompt,
@@ -341,8 +476,8 @@ router.post('/content/ltx-generate', async (req, res) => {
         const imageBuffer = Buffer.from(imageArrayBuffer);
         const keyframeImage = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
         
-        // Generate video from the keyframe image
-        // Fallback to fetch since the SDK may not fully support image-to-video yet
+        // LTX-Video supports direct text-to-video, so we'll use that instead of image-to-video
+        // This should provide better quality videos that match the prompt more accurately
         const videoResponse = await fetch(
           `https://api-inference.huggingface.co/models/${modelId}`,
           {
@@ -352,8 +487,11 @@ router.post('/content/ltx-generate', async (req, res) => {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              inputs: keyframeImage,
-              parameters: parameters
+              inputs: finalPrompt,
+              parameters: {
+                ...parameters,
+                negative_prompt: parameters.negative_prompt || ""
+              }
             })
           }
         );
@@ -388,7 +526,8 @@ router.post('/content/ltx-generate', async (req, res) => {
           prompt: finalPrompt,
           bpm: bpm,
           energyLevel: energyLevel,
-          style: style
+          style: style,
+          lyrics: lyrics // Include lyrics if we have them
         };
         
         // Cache the result
@@ -399,7 +538,7 @@ router.post('/content/ltx-generate', async (req, res) => {
         // Fallback to direct fetch API approach
         console.log('Falling back to fetch API for video generation');
         
-        // Generate image first using text-to-image
+        // Get keyframe image for preview purposes
         const imageResponse = await fetch(
           'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
           {
@@ -422,13 +561,14 @@ router.post('/content/ltx-generate', async (req, res) => {
           throw new Error(`Image generation API error: ${imageResponse.status}`);
         }
         
-        // Convert image to base64 for use in video generation
+        // Convert image to base64 for display
         const imageBuffer = await imageResponse.buffer();
         const keyframeImage = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
         
-        // Use image-to-video endpoint with the generated image
+        // Use LTX-Video for text-to-video generation (direct approach)
+        console.log('Using Lightricks/LTX-Video for text-to-video generation');
         const videoResponse = await fetch(
-          'https://api-inference.huggingface.co/models/stabilityai/stable-video-diffusion-img2vid-xt',
+          'https://api-inference.huggingface.co/models/Lightricks/LTX-Video',
           {
             method: 'POST',
             headers: {
@@ -436,8 +576,11 @@ router.post('/content/ltx-generate', async (req, res) => {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({ 
-              inputs: keyframeImage,
-              parameters: parameters
+              inputs: finalPrompt,
+              parameters: {
+                ...parameters,
+                negative_prompt: parameters.negative_prompt || ""
+              }
             })
           }
         );
@@ -472,7 +615,8 @@ router.post('/content/ltx-generate', async (req, res) => {
           prompt: finalPrompt,
           bpm: bpm,
           energyLevel: energyLevel,
-          style: style
+          style: style,
+          lyrics: lyrics // Include lyrics if we have them
         };
         
         // Cache the result
@@ -565,6 +709,174 @@ function generateDemoVideoData(count, query) {
     description: `Demo video for "${query}" query`
   }));
 }
+
+/**
+ * Get lyrics for a track
+ */
+router.post('/content/lyrics', async (req, res) => {
+  try {
+    const { trackId, artist, title, trackData } = req.body;
+    
+    if (!artist && !title && !trackData) {
+      return res.status(400).json({ error: 'Artist and title or trackData is required' });
+    }
+    
+    let trackInfo;
+    
+    // Extract info from track data if provided
+    if (trackData) {
+      trackInfo = lyricsService.extractTrackInfo(trackData);
+    } else {
+      trackInfo = { artist, title };
+    }
+    
+    // Get lyrics
+    const lyrics = await lyricsService.getLyrics(trackInfo.artist, trackInfo.title);
+    
+    // Create trackId-based cache key if possible
+    if (trackId) {
+      const cacheKey = `track-${trackId}`;
+      // Store in memory cache
+      apiCache.ltx.set(cacheKey, { 
+        data: { lyrics, trackInfo },
+        timestamp: Date.now() 
+      });
+    }
+    
+    res.json({
+      success: true,
+      trackInfo,
+      lyrics
+    });
+  } catch (error) {
+    console.error('Error fetching lyrics:', error);
+    res.status(500).json({ error: 'Failed to fetch lyrics' });
+  }
+});
+
+/**
+ * Initialize lyrics buffer for a track
+ */
+router.post('/content/lyrics-buffer/init', async (req, res) => {
+  try {
+    const { trackId, trackData, audioFeatures } = req.body;
+    
+    if (!trackId || !trackData) {
+      return res.status(400).json({ error: 'Track ID and track data are required' });
+    }
+    
+    // Extract track info for API-based lyrics
+    const trackInfo = lyricsService.extractTrackInfo(trackData);
+    let lyrics = null;
+    let lyricsSource = 'none';
+    
+    try {
+      // First try the API-based approach
+      lyrics = await lyricsService.getLyrics(trackInfo.artist, trackInfo.title);
+      lyricsSource = 'api';
+      
+      // Check if we got actual lyrics or just the placeholder
+      if (lyrics.includes('[No lyrics found for')) {
+        // Try using the audio analyzer for AI-based detection
+        try {
+          const audioAnalyzer = require('./audio-analyzer');
+          await audioAnalyzer.initialize();
+          
+          // Get stream URL based on source
+          const streamUrl = trackData.uploaded
+            ? `/api/upload/stream/${trackData.id}`
+            : `/api/soundcloud/stream/${trackData.id}`;
+            
+          // Convert to server path
+          const serverPath = path.join(process.cwd(), 'public', streamUrl);
+          
+          // Detect lyrics using AI
+          const detectionResult = await audioAnalyzer.detectLyrics(serverPath, trackData);
+          
+          if (detectionResult && detectionResult.text && !detectionResult.text.includes('Error detecting lyrics')) {
+            lyrics = detectionResult.text;
+            lyricsSource = detectionResult.source;
+            console.log(`Used AI to detect lyrics for track ${trackId}, source: ${lyricsSource}`);
+          }
+        } catch (audioError) {
+          console.error('Error using audio analyzer for lyrics:', audioError);
+        }
+      }
+    } catch (lyricsError) {
+      console.error('Error getting lyrics:', lyricsError);
+    }
+    
+    // Initialize the lyrics buffer
+    const bpm = trackData.bpm || audioFeatures?.bpm || 120;
+    const success = await lyricsBufferService.initializeBuffer(
+      trackId, 
+      trackData, 
+      lyrics, 
+      bpm, 
+      audioFeatures
+    );
+    
+    if (success) {
+      res.json({
+        success: true,
+        message: 'Lyrics buffer initialized',
+        trackInfo,
+        lyricsSource,
+        segmentCount: lyricsBufferService.videoBuffer.get(trackId)?.segments.length || 0
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to initialize lyrics buffer' });
+    }
+  } catch (error) {
+    console.error('Error initializing lyrics buffer:', error);
+    res.status(500).json({ error: 'Failed to initialize lyrics buffer' });
+  }
+});
+
+/**
+ * Get video segment for current lyrics
+ */
+router.post('/content/lyrics-buffer/segment', async (req, res) => {
+  try {
+    const { trackId, currentTime, audioFeatures } = req.body;
+    
+    if (!trackId) {
+      return res.status(400).json({ error: 'Track ID is required' });
+    }
+    
+    // Convert to milliseconds if in seconds
+    const timeMs = currentTime > 1000 ? currentTime : currentTime * 1000;
+    
+    // Get current segment from buffer
+    const segmentData = lyricsBufferService.getCurrentVideoSegment(trackId, timeMs);
+    
+    if (segmentData) {
+      // If we have audioFeatures, update buffer with latest data
+      if (audioFeatures && lyricsBufferService.videoBuffer.has(trackId)) {
+        const bufferData = lyricsBufferService.videoBuffer.get(trackId);
+        bufferData.audioFeatures = {
+          ...bufferData.audioFeatures,
+          ...audioFeatures
+        };
+      }
+      
+      res.json({
+        success: true,
+        segment: segmentData
+      });
+    } else {
+      // No segment available yet - return a status that allows polling
+      res.json({
+        success: false,
+        pending: true,
+        message: 'Segment generation in progress'
+      });
+    }
+  } catch (error) {
+    console.error('Error getting lyrics segment:', error);
+    res.status(500).json({ error: 'Failed to get lyrics segment' });
+  }
+});
 
 /**
  * Generate demo LTX content when API is not available

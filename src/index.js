@@ -73,7 +73,59 @@ const requireAuth = (req, res, next) => {
 };
 
 // Home page - Check if user is logged in
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
+  // Check URL parameters for direct login
+  if (req.query.name && req.query.email) {
+    try {
+      console.log('Direct login attempt from URL params:', { 
+        name: req.query.name, 
+        email: req.query.email 
+      });
+      
+      const { User } = require('./models/User');
+      
+      // Check if user already exists
+      let user = await User.findOne({ where: { email: req.query.email } });
+      
+      // Create new user if doesn't exist
+      if (!user) {
+        console.log('Creating new user from URL params:', req.query.email);
+        user = await User.create({
+          name: req.query.name,
+          email: req.query.email,
+          lastLogin: new Date()
+        });
+      } else {
+        // Update existing user's last login
+        console.log('User exists, updating login time for:', user.email);
+        user.lastLogin = new Date();
+        await user.save();
+      }
+      
+      // Set session data
+      req.session.userId = user.id;
+      req.session.name = user.name;
+      req.session.email = user.email;
+      req.session.isAdmin = user.isAdmin || false;
+      
+      // Save session and redirect to home page without parameters
+      await new Promise((resolve, reject) => {
+        req.session.save(err => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      
+      // Redirect to clean URL
+      console.log('Login successful, redirecting to clean URL');
+      return res.redirect('/');
+    } catch (error) {
+      console.error('Error handling direct login:', error);
+      // Continue to render page normally
+    }
+  }
+  
+  // Normal page render
   const isAuthenticated = !!req.session.userId;
   const userName = req.session.name || '';
   const isAdmin = req.session.isAdmin || false;

@@ -38,6 +38,19 @@ class VJVisualizer {
     this.currentContentIndex = 0;
     this.contentCache = [];
     this.contentIsLoading = false;
+    
+    // Lyrics support
+    this.lyricsVisualizer = null;
+    this.currentLyrics = null;
+    this.showLyrics = false; // Disable lyrics text visualization
+    this.currentTrackData = null;
+    this.currentTrackTime = 0;
+    this.currentTrackDuration = 0;
+    
+    // Lyrics-driven video generation
+    this.lyricsVideoManager = null;
+    this.useLyricsVideoMode = options.useLyricsVideoMode !== undefined ? options.useLyricsVideoMode : true;
+    this.lyricsVideoContainer = null;
     this.contentLoadFailed = false;
     this.cueNewContentOnBeat = options.cueNewContentOnBeat || true;
     this.useLTXVideo = options.useLTXVideo || true; // Use LTX for video generation
@@ -60,12 +73,12 @@ class VJVisualizer {
       pastel: 'pastel,soft-colors,dreamy,calm'
     };
     
-    // AI prompt templates by style
+    // Enhanced AI prompt templates by style - optimized for lyrics visualization
     this.aiPromptTemplates = {
-      neon: 'Create a {bpm} BPM {energyLevel} visualization with neon lights, cyberpunk aesthetics, glowing elements in {color1} and {color2}',
-      cyberpunk: 'Generate a {bpm} BPM {energyLevel} futuristic cityscape with digital elements, cyberpunk style in {color1} and {color2}',
-      retro: 'Design a {bpm} BPM {energyLevel} retro 80s synthwave sunset grid landscape in {color1} and {color2}',
-      pastel: 'Create a {bpm} BPM {energyLevel} dreamy abstract fluid animation with pastel colors {color1} and {color2}'
+      neon: 'Create a {bpm} BPM {energyLevel} music video visualization with neon lights, cyberpunk aesthetics, glowing elements in {color1} and {color2}. The imagery should reflect the emotions and story in the lyrics',
+      cyberpunk: 'Generate a {bpm} BPM {energyLevel} futuristic cityscape music video with digital elements, cyberpunk style in {color1} and {color2}. Visuals should match the mood and narrative of the lyrics',
+      retro: 'Design a {bpm} BPM {energyLevel} retro 80s synthwave sunset grid landscape music video in {color1} and {color2}. Create a visual story that enhances the lyrics meaning',
+      pastel: 'Create a {bpm} BPM {energyLevel} dreamy abstract fluid animation music video with pastel colors {color1} and {color2}. Visual elements should represent the key themes and emotions from the lyrics'
     };
     
     // Color palettes
@@ -145,12 +158,21 @@ class VJVisualizer {
       return false;
     }
     
+    // Store the previous state to check if we're reinitializing
+    const isReinitializing = this.audioContext === audioContext && this.analyserNode === analyserNode;
+    
+    // Store the audio context reference
     this.audioContext = audioContext;
     
     if (analyserNode) {
       // Use provided analyser node
       console.log('Using provided analyser node with FFT size:', analyserNode.fftSize);
       this.analyserNode = analyserNode;
+      
+      // IMPORTANT: Make sure we don't modify the existing audio graph when reinitializing
+      if (isReinitializing) {
+        console.log('Audio is being reinitialized - preserving existing connections');
+      }
     } else {
       // Create a new analyser node
       console.log('Creating new analyser node');
@@ -168,7 +190,16 @@ class VJVisualizer {
     try {
       this.analyserNode.getByteFrequencyData(this.frequencyData);
       this.analyserNode.getByteTimeDomainData(this.timeData);
-      console.log('Successfully fetched initial audio data');
+      
+      // Check if we have any audio data
+      const hasAudioData = this.frequencyData.some(value => value > 0);
+      console.log('Initial audio data check:', hasAudioData ? 'Data detected' : 'No data detected');
+      
+      if (!hasAudioData) {
+        console.warn('No audio data detected - check audio node connections');
+      } else {
+        console.log('Successfully fetched initial audio data');
+      }
     } catch (err) {
       console.error('Error getting initial audio data:', err);
     }
@@ -374,6 +405,50 @@ class VJVisualizer {
     containerElement.style.position = 'relative';
     containerElement.style.overflow = 'hidden';
     containerElement.style.backgroundColor = '#000';
+    
+    // Initialize lyrics visualizer (needs to be done before adding other elements)
+    this.lyricsVisualizer = new LyricsVisualizer({
+      container: containerElement,
+      visible: this.showLyrics,
+      position: 'bottom',
+      backgroundColor: 'rgba(0, 0, 0, 0.6)'
+    });
+    
+    // Create container for lyrics-driven video
+    this.lyricsVideoContainer = document.createElement('div');
+    this.lyricsVideoContainer.className = 'lyrics-video-container';
+    this.lyricsVideoContainer.style.position = 'absolute';
+    this.lyricsVideoContainer.style.top = '0';
+    this.lyricsVideoContainer.style.left = '0';
+    this.lyricsVideoContainer.style.width = '100%';
+    this.lyricsVideoContainer.style.height = '100%';
+    this.lyricsVideoContainer.style.zIndex = '1'; // Below lyrics text but above other videos
+    this.lyricsVideoContainer.style.display = this.useLyricsVideoMode ? 'block' : 'none';
+    containerElement.appendChild(this.lyricsVideoContainer);
+    
+    // Initialize lyrics video manager
+    if (this.useLyricsVideoMode) {
+      this.lyricsVideoManager = new LyricsVideoManager({
+        container: this.lyricsVideoContainer,
+        pollingInterval: 500,
+        transitionDuration: 500,
+        beatSyncTransitions: true,
+        onSegmentChange: (segment) => {
+          if (this.helpTextElement) {
+            this.helpTextElement.textContent = `Lyrics segment: "${segment.segment.text.substring(0, 30)}..."`;
+          }
+        },
+        onError: (error) => {
+          console.error('Lyrics video manager error:', error);
+          // Fall back to standard video if lyrics video fails
+          if (this.helpTextElement) {
+            this.helpTextElement.textContent = 'Lyrics video error - falling back to standard mode';
+          }
+          this.lyricsVideoContainer.style.display = 'none';
+          this.videoElement.style.opacity = '1';
+        }
+      });
+    }
     
     // Create video element for background videos/images
     this.videoElement = document.createElement('video');
@@ -644,10 +719,123 @@ class VJVisualizer {
     });
     
     // Add controls to the container
+    // Add lyrics toggle
+    const lyricsContainer = document.createElement('div');
+    lyricsContainer.className = 'vj-control-container';
+    
+    const lyricsCheckbox = document.createElement('input');
+    lyricsCheckbox.type = 'checkbox';
+    lyricsCheckbox.id = 'vj-lyrics-toggle';
+    lyricsCheckbox.checked = this.showLyrics;
+    
+    const lyricsLabel = document.createElement('label');
+    lyricsLabel.htmlFor = 'vj-lyrics-toggle';
+    lyricsLabel.textContent = 'Lyrics';
+    lyricsLabel.style.color = '#fff';
+    lyricsLabel.style.fontSize = '12px';
+    lyricsLabel.style.marginLeft = '5px';
+    
+    lyricsContainer.appendChild(lyricsCheckbox);
+    lyricsContainer.appendChild(lyricsLabel);
+    
+    // Add lyrics video mode toggle
+    const lyricsVideoContainer = document.createElement('div');
+    lyricsVideoContainer.className = 'vj-control-container';
+    
+    const lyricsVideoCheckbox = document.createElement('input');
+    lyricsVideoCheckbox.type = 'checkbox';
+    lyricsVideoCheckbox.id = 'vj-lyrics-video-toggle';
+    lyricsVideoCheckbox.checked = this.useLyricsVideoMode;
+    
+    const lyricsVideoLabel = document.createElement('label');
+    lyricsVideoLabel.htmlFor = 'vj-lyrics-video-toggle';
+    lyricsVideoLabel.textContent = 'Lyrics Videos';
+    lyricsVideoLabel.style.color = '#fff';
+    lyricsVideoLabel.style.fontSize = '12px';
+    lyricsVideoLabel.style.marginLeft = '5px';
+    
+    lyricsVideoContainer.appendChild(lyricsVideoCheckbox);
+    lyricsVideoContainer.appendChild(lyricsVideoLabel);
+    
+    // Add lyrics position selector
+    const positionContainer = document.createElement('div');
+    positionContainer.className = 'vj-control-container';
+    
+    const positionSelect = document.createElement('select');
+    positionSelect.id = 'vj-lyrics-position';
+    positionSelect.style.background = '#333';
+    positionSelect.style.color = '#fff';
+    positionSelect.style.border = 'none';
+    positionSelect.style.borderRadius = '3px';
+    positionSelect.style.padding = '3px';
+    positionSelect.style.fontSize = '12px';
+    
+    const positions = ['top', 'middle', 'bottom'];
+    positions.forEach(pos => {
+      const option = document.createElement('option');
+      option.value = pos;
+      option.textContent = pos.charAt(0).toUpperCase() + pos.slice(1);
+      if (pos === 'bottom') option.selected = true;
+      positionSelect.appendChild(option);
+    });
+    
+    const positionLabel = document.createElement('label');
+    positionLabel.htmlFor = 'vj-lyrics-position';
+    positionLabel.textContent = 'Position';
+    positionLabel.style.color = '#fff';
+    positionLabel.style.fontSize = '12px';
+    positionLabel.style.marginLeft = '5px';
+    
+    positionContainer.appendChild(positionSelect);
+    positionContainer.appendChild(positionLabel);
+    
+    // Add event listeners for lyrics controls
+    lyricsCheckbox.addEventListener('change', (e) => {
+      this.showLyrics = e.target.checked;
+      if (this.lyricsVisualizer) {
+        this.lyricsVisualizer.toggleVisibility();
+      }
+    });
+    
+    positionSelect.addEventListener('change', (e) => {
+      if (this.lyricsVisualizer) {
+        this.lyricsVisualizer.setPosition(e.target.value);
+      }
+    });
+    
+    // Add event listener for lyrics video mode toggle
+    lyricsVideoCheckbox.addEventListener('change', (e) => {
+      this.useLyricsVideoMode = e.target.checked;
+      
+      if (this.lyricsVideoContainer) {
+        this.lyricsVideoContainer.style.display = this.useLyricsVideoMode ? 'block' : 'none';
+      }
+      
+      if (this.videoElement) {
+        this.videoElement.style.opacity = this.useLyricsVideoMode ? '0.3' : '1';
+      }
+      
+      // If turning on, initialize with current track if available
+      if (this.useLyricsVideoMode && this.lyricsVideoManager && this.currentTrackData) {
+        this.lyricsVideoManager.setTrack(
+          this.currentTrackData, 
+          this.audioContext, 
+          this.analyserNode
+        );
+      } 
+      // If turning off, stop the lyrics video manager
+      else if (!this.useLyricsVideoMode && this.lyricsVideoManager) {
+        this.lyricsVideoManager.stop();
+      }
+    });
+    
     controlsElement.appendChild(styleButton);
     controlsElement.appendChild(contentButton);
     controlsElement.appendChild(ltxButton);
     controlsElement.appendChild(ltxContainer);
+    controlsElement.appendChild(lyricsContainer);
+    controlsElement.appendChild(lyricsVideoContainer);
+    controlsElement.appendChild(positionContainer);
     controlsElement.appendChild(intensityContainer);
     controlsElement.appendChild(beatSyncContainer);
     
@@ -1044,9 +1232,10 @@ class VJVisualizer {
   /**
    * Generate video content using LTX (Latent Transformer for Video Generation)
    * @param {string} forceStyle - Optional style to use instead of current style
+   * @param {string} customPrompt - Optional custom prompt to use instead of generated one
    * @return {Object} Generated video content info or null if failed
    */
-  async generateLTXContent(forceStyle) {
+  async generateLTXContent(forceStyle, customPrompt) {
     if (this.contentIsLoading) return null;
     this.contentIsLoading = true;
     
@@ -1069,13 +1258,24 @@ class VJVisualizer {
         frequencyProfile: this.getFrequencyProfile()
       };
       
-      // Fill template with current audio features
-      const colors = this.colorPalettes[style] || this.currentColors;
-      const prompt = template
-        .replace('{bpm}', this.bpm)
-        .replace('{energyLevel}', energyLevel)
-        .replace('{color1}', colors[0])
-        .replace('{color2}', colors[1] || colors[0]);
+      // Use custom prompt if provided, otherwise generate one
+      let prompt;
+      if (customPrompt) {
+        prompt = customPrompt;
+      } else {
+        // Fill template with current audio features
+        const colors = this.colorPalettes[style] || this.currentColors;
+        prompt = template
+          .replace('{bpm}', this.bpm)
+          .replace('{energyLevel}', energyLevel)
+          .replace('{color1}', colors[0])
+          .replace('{color2}', colors[1] || colors[0]);
+        
+        // Add a note about lyric-based generation
+        if (this.currentTrackData) {
+          prompt += `. Generate a visualization for "${this.currentTrackData.title}" by ${this.currentTrackData.user?.username || 'Unknown Artist'}`;
+        }
+      }
       
       console.log(`Generating LTX video content with prompt: ${prompt} for style: ${style}`);
       
@@ -1083,8 +1283,23 @@ class VJVisualizer {
       const endpoint = `${window.VJVisualizerContentEndpoint}/ltx-generate`;
       console.log(`Sending request to: ${endpoint}`);
       
-      const requestData = { prompt, style, audioFeatures };
-      console.log('Request data:', requestData);
+      // Add track data if available for lyrics
+      const requestData = { 
+        prompt, 
+        style, 
+        audioFeatures,
+        trackData: this.currentTrackData || null,
+        trackId: this.currentTrackData?.id || null
+      };
+      
+      // Make sure to log the data being sent for debugging
+      console.log('Sending LTX request with lyrics data:', {
+        trackTitle: this.currentTrackData?.title,
+        trackArtist: this.currentTrackData?.user?.username,
+        prompt: prompt,
+        style: style,
+        audioFeatures: audioFeatures
+      });
       
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -1532,6 +1747,13 @@ class VJVisualizer {
       return;
     }
     
+    // Check if we have lyrics in the content
+    if (content.lyrics && this.lyricsVisualizer) {
+      console.log('Setting lyrics for video content');
+      this.currentLyrics = content.lyrics;
+      this.lyricsVisualizer.setLyrics(this.currentTrackData, content.lyrics);
+    }
+    
     // Reset background color and gradient
     this.videoElement.style.backgroundColor = '';
     this.videoElement.style.backgroundImage = '';
@@ -1959,6 +2181,22 @@ class VJVisualizer {
       }
     } catch (err) {
       console.error('Error in visualizer draw loop:', err);
+    }
+    
+    // Update lyrics timing if available
+    if (this.videoElement) {
+      this.currentTrackTime = this.videoElement.currentTime || 0;
+      this.currentTrackDuration = this.videoElement.duration || 0;
+      
+      // Update lyrics visualizer
+      if (this.lyricsVisualizer && this.currentLyrics && this.currentTrackTime > 0 && this.currentTrackDuration > 0) {
+        this.lyricsVisualizer.updateTime(this.currentTrackTime, this.currentTrackDuration);
+      }
+      
+      // Update lyrics video manager
+      if (this.lyricsVideoManager && this.useLyricsVideoMode) {
+        this.lyricsVideoManager.updateTime(this.currentTrackTime);
+      }
     }
     
     // Request next frame
@@ -2563,6 +2801,161 @@ class VJVisualizer {
     for (let i = 0; i < this.frequencyData.length; i++) {
       const barHeight = (this.frequencyData[i] / 255) * height * 0.7;
       ctx.fillRect(i * barWidth, height - barHeight, barWidth - 1, barHeight);
+    }
+  }
+  
+  /**
+   * Set current track data for lyrics
+   * @param {Object} trackData - SoundCloud track data
+   */
+  setTrackData(trackData) {
+    this.currentTrackData = trackData;
+    
+    // Always generate LTX video using lyrics data when track changes
+    if (this.useLTXVideo && trackData) {
+      console.log('Generating LTX video using lyrics for track:', trackData.title);
+      
+      // Make sure the main video element has full opacity
+      if (this.videoElement) {
+        this.videoElement.style.opacity = '1';
+      }
+      
+      // Hide lyrics video container if it exists
+      if (this.lyricsVideoContainer) {
+        this.lyricsVideoContainer.style.display = 'none';
+      }
+      
+      // Force a new LTX video generation with current track data
+      console.log('Requesting LTX generation for new track with lyrics');
+      this.generateLTXContent()
+        .then(videoContent => {
+          if (videoContent) {
+            console.log('Successfully generated LTX video with lyrics, applying to visualizer');
+            this.applyVideoContent(videoContent);
+            
+            if (this.helpTextElement) {
+              this.helpTextElement.textContent = 'LTX video with lyrics active';
+            }
+          } else {
+            console.error('LTX generation returned no content');
+            // Fall back to AI image generation
+            this.generateAiContent().then(imageContent => {
+              if (imageContent) {
+                this.applyImageContent(imageContent);
+              }
+            });
+          }
+        })
+        .catch(err => {
+          console.error('Error generating LTX video with lyrics:', err);
+          // Fall back to AI image generation
+          this.generateAiContent().then(imageContent => {
+            if (imageContent) {
+              this.applyImageContent(imageContent);
+            }
+          });
+        });
+      
+      // Also optionally initialize the lyrics video manager but with display off
+      if (this.useLyricsVideoMode && this.lyricsVideoManager && trackData) {
+        this.lyricsVideoManager.setTrack(trackData, this.audioContext, this.analyserNode)
+          .catch(err => console.error('Error initializing lyrics video manager:', err));
+      }
+    }
+    // Fallback to standard AI content if LTX is disabled
+    else if (!this.useLTXVideo && trackData) {
+      console.log('LTX video disabled, falling back to AI image generation');
+      this.generateAiContent().then(imageContent => {
+        if (imageContent) {
+          this.applyImageContent(imageContent);
+        }
+      });
+    }
+  }
+  
+  /**
+   * Display detected lyrics in the visualizer
+   * @param {string} lyrics - The current lyrics to display
+   * @param {Object} options - Display options
+   * @param {boolean} options.highlight - Whether to highlight the lyrics
+   * @param {number} options.duration - How long to display the lyrics in ms
+   * @param {string} options.source - Source of the lyrics (detected, manual, etc)
+   */
+  displayDetectedLyrics(lyrics, options = {}) {
+    if (!lyrics || lyrics.trim() === '') return;
+    
+    // Default options
+    const displayOptions = {
+      highlight: true,
+      duration: 5000,
+      source: 'detected',
+      ...options
+    };
+    
+    console.log(`Displaying lyrics: "${lyrics}" (source: ${displayOptions.source})`);
+    
+    // Create or get lyrics display element
+    if (!this.lyricsDisplayElement) {
+      this.lyricsDisplayElement = document.createElement('div');
+      this.lyricsDisplayElement.className = 'vj-lyrics-display';
+      this.lyricsDisplayElement.style.position = 'absolute';
+      this.lyricsDisplayElement.style.bottom = '10%';
+      this.lyricsDisplayElement.style.left = '5%';
+      this.lyricsDisplayElement.style.right = '5%';
+      this.lyricsDisplayElement.style.textAlign = 'center';
+      this.lyricsDisplayElement.style.color = '#fff';
+      this.lyricsDisplayElement.style.fontFamily = '"Montserrat", sans-serif';
+      this.lyricsDisplayElement.style.fontSize = '24px';
+      this.lyricsDisplayElement.style.fontWeight = 'bold';
+      this.lyricsDisplayElement.style.textShadow = '0 0 10px rgba(0,0,0,0.8)';
+      this.lyricsDisplayElement.style.zIndex = '10';
+      this.lyricsDisplayElement.style.transition = 'opacity 0.5s ease-in-out';
+      this.lyricsDisplayElement.style.opacity = '0';
+      this.lyricsDisplayElement.style.pointerEvents = 'none'; // Don't interfere with interaction
+      
+      // Add to container
+      this.container.appendChild(this.lyricsDisplayElement);
+    }
+    
+    // Update the lyrics content
+    this.lyricsDisplayElement.textContent = lyrics;
+    
+    // Apply highlight effect if requested
+    if (displayOptions.highlight) {
+      this.lyricsDisplayElement.style.textShadow = '0 0 15px rgba(255,255,255,0.9), 0 0 10px rgba(0,0,0,0.8)';
+      setTimeout(() => {
+        if (this.lyricsDisplayElement) {
+          this.lyricsDisplayElement.style.textShadow = '0 0 10px rgba(0,0,0,0.8)';
+        }
+      }, 1000);
+    }
+    
+    // Show the lyrics
+    this.lyricsDisplayElement.style.opacity = '1';
+    
+    // Clear any existing timeout
+    if (this.lyricsDisplayTimeout) {
+      clearTimeout(this.lyricsDisplayTimeout);
+    }
+    
+    // Set timeout to hide lyrics
+    this.lyricsDisplayTimeout = setTimeout(() => {
+      if (this.lyricsDisplayElement) {
+        this.lyricsDisplayElement.style.opacity = '0';
+      }
+    }, displayOptions.duration);
+    
+    // Optionally trigger a content update based on the lyrics
+    if (this.useLTXVideo && this.showLyrics && Math.random() < 0.5) { // 50% chance
+      const lyricPrompt = `Create a visualization for the lyrics: "${lyrics}"`;
+      this.generateLTXContent(null, lyricPrompt)
+        .then(videoContent => {
+          if (videoContent) {
+            console.log('Generated lyric-based LTX visualization');
+            this.applyVideoContent(videoContent);
+          }
+        })
+        .catch(err => console.error('Error generating lyric-based visualization:', err));
     }
   }
 }
