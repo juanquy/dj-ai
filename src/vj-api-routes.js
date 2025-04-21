@@ -503,10 +503,22 @@ router.post('/content/ltx-generate', async (req, res) => {
         // Get video data as binary
         const videoBuffer = await videoResponse.buffer();
         
+        if (!videoBuffer || videoBuffer.length < 1000) {
+          console.error('Empty or very small video buffer received, likely an error');
+          throw new Error('Invalid video buffer received');
+        }
+          
         // Save video file with timestamp to avoid collisions
         const timestamp = Date.now();
         const videoFileName = `ltx-${timestamp}.mp4`;
-        const videoPath = path.join(process.cwd(), 'public', 'videos', videoFileName);
+        
+        // Create the target directory for lyrics segments
+        const lyricsSegmentDir = path.join(process.cwd(), 'public', 'videos', 'lyric-segments');
+        if (!fs.existsSync(lyricsSegmentDir)) {
+          fs.mkdirSync(lyricsSegmentDir, { recursive: true });
+        }
+        
+        const videoPath = path.join(lyricsSegmentDir, videoFileName);
         
         // Ensure videos directory exists
         const videosDir = path.join(process.cwd(), 'public', 'videos');
@@ -519,7 +531,7 @@ router.post('/content/ltx-generate', async (req, res) => {
         
         // Create response data
         const generatedVideoData = {
-          url: `/videos/${videoFileName}`,
+          url: `/videos/lyric-segments/${videoFileName}`,
           keyframe: keyframeImage,
           width: parameters.width,
           height: parameters.height,
@@ -592,10 +604,22 @@ router.post('/content/ltx-generate', async (req, res) => {
         // Get video data as binary
         const videoBuffer = await videoResponse.buffer();
         
+        if (!videoBuffer || videoBuffer.length < 1000) {
+          console.error('Empty or very small video buffer received, likely an error');
+          throw new Error('Invalid video buffer received');
+        }
+          
         // Save video file with timestamp to avoid collisions
         const timestamp = Date.now();
         const videoFileName = `ltx-${timestamp}.mp4`;
-        const videoPath = path.join(process.cwd(), 'public', 'videos', videoFileName);
+        
+        // Create the target directory for lyrics segments
+        const lyricsSegmentDir = path.join(process.cwd(), 'public', 'videos', 'lyric-segments');
+        if (!fs.existsSync(lyricsSegmentDir)) {
+          fs.mkdirSync(lyricsSegmentDir, { recursive: true });
+        }
+        
+        const videoPath = path.join(lyricsSegmentDir, videoFileName);
         
         // Ensure videos directory exists
         const videosDir = path.join(process.cwd(), 'public', 'videos');
@@ -608,7 +632,7 @@ router.post('/content/ltx-generate', async (req, res) => {
         
         // Create response data
         const generatedVideoData = {
-          url: `/videos/${videoFileName}`,
+          url: `/videos/lyric-segments/${videoFileName}`,
           keyframe: keyframeImage,
           width: parameters.width,
           height: parameters.height,
@@ -918,6 +942,41 @@ function generateDemoLTXContent(prompt, style, bpm) {
   // Create a fake keyframe image
   const keyframeImageIndex = Math.floor(Math.random() * 5) + 1;
   
+  // Try to copy the demo video to the lyric-segments directory to ensure it's found by the lyrics visualizer
+  try {
+    const lyricsSegmentDir = path.join(process.cwd(), 'public', 'videos', 'lyric-segments');
+    if (!fs.existsSync(lyricsSegmentDir)) {
+      fs.mkdirSync(lyricsSegmentDir, { recursive: true });
+    }
+    
+    // Create a unique filename for this segment
+    const timestamp = Date.now();
+    const uniqueFileName = `demo-${style}-${timestamp}.mp4`;
+    const sourcePath = path.join(process.cwd(), 'public', 'videos', videoOptions[videoIndex]);
+    const targetPath = path.join(lyricsSegmentDir, uniqueFileName);
+    
+    // If source exists and is accessible, copy it to target
+    if (fs.existsSync(sourcePath)) {
+      fs.copyFileSync(sourcePath, targetPath);
+      console.log(`Copied demo video to lyric-segments as ${uniqueFileName}`);
+      // Return data with the new copy's path
+      return {
+        url: `/videos/lyric-segments/${uniqueFileName}`,
+        keyframe: `/videos/demo-${keyframeImageIndex}.jpg`,
+        width: 1920,
+        height: 1080,
+        prompt: prompt,
+        bpm: bpm,
+        energyLevel: bpm > 140 ? 'high-energy' : (bpm < 90 ? 'ambient' : 'moderate'),
+        style: style,
+        demo: true
+      };
+    }
+  } catch (error) {
+    console.error('Error copying demo video to lyric-segments directory:', error);
+  }
+  
+  // Return default path if copy fails
   return {
     url: `/videos/${videoOptions[videoIndex]}`,
     keyframe: `/videos/demo-${keyframeImageIndex}.jpg`,

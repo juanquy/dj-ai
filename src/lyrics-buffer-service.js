@@ -706,6 +706,7 @@ Important: ONLY return the prompt itself with no explanations or additional text
           body: JSON.stringify({
             model: 'claude-3-haiku-20240307', // Using the fastest Claude model for real-time prompt generation
             max_tokens: 300,
+            temperature: 0.7,
             system: systemPrompt,
             messages: [
               { role: 'user', content: userPrompt }
@@ -719,7 +720,13 @@ Important: ONLY return the prompt itself with no explanations or additional text
         }
         
         const result = await response.json();
-        const generatedPrompt = result.content[0].text.trim();
+        const generatedPrompt = result?.content?.[0]?.text?.trim() || '';
+        
+        // If the prompt is empty after response, throw error to use fallback
+        if (!generatedPrompt) {
+          console.warn('Claude API returned empty prompt, using fallback');
+          throw new Error('Empty prompt from Claude API');
+        }
         
         console.log('Claude-generated prompt:', generatedPrompt);
         
