@@ -184,7 +184,7 @@ router.post('/content/ai-generate', async (req, res) => {
         return res.json(demoData);
       }
       
-      console.log('Using Hugging Face API with key:', HUGGING_FACE_API_KEY.substring(0, 4) + '...');
+      console.log('Using Hugging Face API for image generation');
       
       let base64Image;
       
