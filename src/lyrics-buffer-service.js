@@ -645,7 +645,7 @@ class LyricsBufferService {
       console.log('Generating AI prompt from lyrics:', mainLine);
       
       // Use Claude API for creative prompt generation
-      const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || 'YOUR_CLAUDE_API_KEY';
+      const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || 'your_claude_api_key';
       
       // Check if we have all the necessary data
       if (!fullText || !mainLine) {
