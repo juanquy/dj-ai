@@ -1,0 +1,244 @@
+/**
+ * DJAI VJ Visualizer Styles
+ */
+
+/* Visualizer styles */
+.visualizer-title {
+  margin-top: 20px;
+  margin-bottom: 10px;
+  font-size: 1.4em;
+  color: #ff5500;
+  text-align: center;
+  text-shadow: 0 0 5px rgba(255, 85, 0, 0.5);
+}
+
+.visualizer-wrapper {
+  width: 100%;
+  margin: 10px auto 30px auto;
+  display: flex;
+  justify-content: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 20px;
+}
+
+.vj-container {
+  position: relative;
+  width: 100%;
+  height: 300px;
+  margin: 10px auto 20px auto;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px var(--container-shadow);
+  max-width: 1200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Theme-specific VJ container styles */
+[data-theme="light"] .vj-container {
+  background-color: rgba(240, 240, 240, 0.2);
+}
+
+[data-theme="dark"] .vj-container {
+  background-color: rgba(30, 30, 30, 0.2);
+}
+
+/* Background video styles */
+.vj-background-video {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.7;
+  z-index: 0;
+  transform: translate(-50%, -50%);
+}
+
+/* Canvas overlay styles */
+.vj-effects-canvas,
+.vj-overlay-canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+}
+
+.vj-effects-canvas {
+  mix-blend-mode: lighten;
+}
+
+.vj-overlay-canvas {
+  mix-blend-mode: screen;
+  z-index: 2;
+}
+
+/* VJ controls */
+.vj-controls {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  padding: 5px;
+  display: flex;
+  gap: 5px;
+  font-family: Arial, sans-serif;
+}
+
+.vj-control-button {
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+.vj-control-button:hover {
+  background: #555;
+}
+
+/* Modify main player elements to be compatible with VJ visuals */
+.mix-player {
+  position: relative;
+  z-index: 2;
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(5px);
+  border-radius: 5px;
+  margin-bottom: 20px;
+  padding: 15px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Make text more visible on top of visuals */
+.mix-player, 
+.mix-info, 
+.current-track-info,
+.mix-details h4,
+.search-section h3,
+.mix-result h3,
+.playlist-section h3,
+.search-form input,
+.search-form button,
+.track-item,
+.selected-track {
+  color: var(--text-color);
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+  position: relative;
+  z-index: 2;
+}
+
+/* Ensure text is visible in both themes when over the visualizer */
+[data-theme="light"] .visualizer-wrapper ~ .mix-player,
+[data-theme="light"] .visualizer-wrapper ~ div .mix-info, 
+[data-theme="light"] .visualizer-wrapper ~ div .mix-details h4,
+[data-theme="light"] .visualizer-wrapper ~ div .current-track-info {
+  color: var(--text-color);
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.7);
+}
+
+[data-theme="dark"] .visualizer-wrapper ~ .mix-player,
+[data-theme="dark"] .visualizer-wrapper ~ div .mix-info, 
+[data-theme="dark"] .visualizer-wrapper ~ div .mix-details h4,
+[data-theme="dark"] .visualizer-wrapper ~ div .current-track-info {
+  color: var(--text-color);
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+}
+
+/* Enhance visualizer style */
+#mix-visualizer {
+  position: relative;
+  width: 100%;
+  height: 100px;
+  margin: 10px 0;
+  background: rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+}
+
+/* Transparent background for track list */
+.mix-track-list ol li {
+  background-color: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(5px);
+  margin: 5px 0;
+  padding: 8px;
+  border-radius: 3px;
+}
+
+/* Style for the current playing track */
+.mix-track-list ol li.current-track {
+  background-color: rgba(255, 85, 0, 0.5);
+  box-shadow: 0 0 5px rgba(255, 85, 0, 0.7);
+}
+
+/* Style for transition markers */
+.transition-marker {
+  position: absolute;
+  width: 4px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 5px rgba(255, 255, 255, 0.7);
+}
+
+/* Make the container look better with VJ background */
+.container {
+  position: relative;
+  background-color: rgba(20, 20, 20, 0.7);
+  backdrop-filter: blur(5px);
+  border-radius: 8px;
+  padding: 20px;
+  z-index: 2;
+}
+
+/* Respect theme settings while providing contrast for the VJ elements */
+body {
+  background-color: var(--bg-color);
+}
+
+/* Ensure the VJ container has good contrast with both themes */
+[data-theme="light"] .container {
+  background-color: rgba(245, 245, 245, 0.85);
+}
+
+[data-theme="dark"] .container {
+  background-color: rgba(30, 30, 30, 0.85);
+}
+
+/* Make sure content sections are above the visualizer */
+.two-column, 
+.left-column, 
+.right-column,
+.search-section, 
+.mix-result, 
+.playlist-section {
+  position: relative;
+  z-index: 3;
+  background-color: var(--container-bg);
+  border-radius: 8px;
+  margin: 5px;
+  padding: 10px;
+}
+
+/* Media queries for responsive behavior */
+@media (max-width: 768px) {
+  .vj-controls {
+    bottom: 5px;
+    right: 5px;
+    padding: 3px;
+  }
+
+  .vj-control-button {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+}

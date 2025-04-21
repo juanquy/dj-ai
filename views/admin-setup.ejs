@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DJAI - Admin Setup</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <style>
+    .setup-container {
+      max-width: 600px;
+      margin: 3rem auto;
+      padding: 2.5rem;
+      background-color: var(--container-bg);
+      border-radius: 8px;
+      box-shadow: 0 4px 15px var(--container-shadow);
+    }
+    
+    .setup-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    
+    .setup-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      color: var(--primary-color);
+    }
+    
+    .setup-form {
+      margin-top: 2rem;
+    }
+    
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--input-border);
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    
+    .form-actions {
+      margin-top: 2rem;
+      text-align: center;
+    }
+    
+    .admin-note {
+      margin-top: 2rem;
+      padding: 1rem;
+      border-left: 4px solid var(--primary-color);
+      background-color: var(--card-bg);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="setup-container">
+    <div class="setup-header">
+      <div class="setup-icon">🔐</div>
+      <h1>DJAI Admin Setup</h1>
+      <p>Create the first administrator account to manage your DJAI application.</p>
+    </div>
+    
+    <form id="admin-setup-form" class="setup-form">
+      <div class="form-group">
+        <label for="admin-name">Admin Name</label>
+        <input type="text" id="admin-name" name="name" placeholder="Your name" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="admin-email">Admin Email</label>
+        <input type="email" id="admin-email" name="email" placeholder="your@email.com" required>
+      </div>
+      
+      <div class="form-actions">
+        <button type="submit" class="action-button">Create Admin Account</button>
+      </div>
+    </form>
+    
+    <div class="admin-note">
+      <p><strong>Note:</strong> This admin account will have full access to the system, including:</p>
+      <ul>
+        <li>Managing all user accounts</li>
+        <li>Setting premium status for users</li>
+        <li>Viewing system statistics</li>
+        <li>Creating additional admin accounts</li>
+      </ul>
+      <p>The admin setup page will be disabled after the first admin account is created.</p>
+    </div>
+  </div>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const setupForm = document.getElementById('admin-setup-form');
+      
+      setupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const nameInput = document.getElementById('admin-name');
+        const emailInput = document.getElementById('admin-email');
+        
+        const name = nameInput.value.trim();
+        const email = emailInput.value.trim();
+        
+        if (!name || !email) {
+          alert('Please fill in all fields');
+          return;
+        }
+        
+        try {
+          const response = await fetch('/api/admin/setup', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name, email })
+          });
+          
+          const data = await response.json();
+          
+          if (response.ok && data.success) {
+            alert('Admin account created successfully. You will be redirected to the admin dashboard.');
+            window.location.href = '/admin';
+          } else {
+            alert(`Setup failed: ${data.error || 'Unknown error'}`);
+          }
+        } catch (error) {
+          console.error('Setup error:', error);
+          alert('Setup failed. Please try again.');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

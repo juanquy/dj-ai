@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DJAI - Automatic AI DJ</title>
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="theme-color" content="#ff5500">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="stylesheet" href="/styles-advanced.css">
+  <link rel="stylesheet" href="/styles-vj.css">
+  <script src="/js/audio-mixer.js"></script>
+  <script src="/js/visualizer-shaders.js"></script>
+  <script src="/js/vj-visualizer.js"></script>
+  <!-- Load shaders and verify they're available -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Check if shader definitions are available
+      if (!window.VISUALIZER_SHADERS) {
+        console.error('Visualizer shaders not loaded properly');
+      } else {
+        console.log('Visualizer shaders loaded successfully', Object.keys(window.VISUALIZER_SHADERS));
+      }
+    });
+  </script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>DJAI - Automatic AI DJ</h1>
+      <div class="theme-switch">
+        <span class="theme-switch-label">Switch Theme</span>
+        <label class="theme-switch-toggle">
+          <input type="checkbox" id="theme-toggle">
+          <span class="theme-switch-slider"></span>
+        </label>
+      </div>
+    </div>
+    
+    <% if (isAuthenticated) { %>
+      <div class="auth-status authenticated">
+        <p>✅ Welcome, <%= userName %>!</p>
+        <% if (locals.isAdmin) { %>
+          <a href="/admin" class="admin-link">Admin Dashboard</a>
+        <% } %>
+      </div>
+      
+      <div class="dj-section">
+        <h2>Create an AI Mix</h2>
+        
+        <!-- VJ Visualizer container moved out of two-column and made full width -->
+        <h3 class="visualizer-title">Visual DJ Mixer</h3>
+        <div class="visualizer-wrapper">
+          <div id="vj-container" class="vj-container"></div>
+        </div>
+        
+        <div class="two-column">
+          <div class="left-column">
+            <div class="search-section">
+              <h3>Find Music</h3>
+              
+              <!-- Tabs for music source -->
+              <div class="source-tabs">
+                <button class="tab-button active" data-tab="soundcloud">SoundCloud Search</button>
+                <button class="tab-button" data-tab="uploads">Your Uploads</button>
+              </div>
+              
+              <!-- SoundCloud Search Tab -->
+              <div class="tab-content active" id="soundcloud-tab">
+                <div class="search-form">
+                  <input type="text" id="search-input" placeholder="Search for tracks...">
+                  <button id="search-button">Search</button>
+                </div>
+                <div id="search-results" class="search-results"></div>
+                
+                <div class="url-input-section">
+                  <h3>Add SoundCloud URL</h3>
+                  <div class="url-input-form">
+                    <input type="text" id="soundcloud-url" placeholder="Paste SoundCloud track URL here">
+                    <button id="resolve-url-button">Add Track</button>
+                  </div>
+                  <div id="url-result" class="url-result"></div>
+                </div>
+              </div>
+              
+              <!-- Uploads Tab -->
+              <div class="tab-content" id="uploads-tab">
+                <div class="upload-form">
+                  <h3>Upload New Track</h3>
+                  <form id="upload-form" enctype="multipart/form-data">
+                    <div class="file-input-container">
+                      <input type="file" id="track-file" name="track" accept="audio/*">
+                      <p class="file-input-help">Supported formats: MP3, WAV, FLAC, etc.</p>
+                    </div>
+                    <button type="submit" id="upload-button">Upload Track</button>
+                  </form>
+                  <div id="upload-progress" class="progress-bar">
+                    <div class="progress-fill"></div>
+                  </div>
+                  <div id="upload-message"></div>
+                </div>
+                <div class="my-tracks">
+                  <h3>My Uploaded Tracks</h3>
+                  <div id="uploaded-tracks" class="uploaded-tracks">
+                    <p class="loading-message">Loading your tracks...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="playlist-section">
+              <h3>Your Mix Playlist</h3>
+              <div id="selected-tracks" class="selected-tracks">
+                <p class="empty-message">Add tracks to your mix by searching above</p>
+              </div>
+              <button id="generate-mix" class="action-button" disabled>Generate AI Mix</button>
+            </div>
+          </div>
+          
+          <div class="right-column">
+            <div id="mix-result" class="mix-result">
+              <h3>Your AI Mix</h3>
+              <div class="mix-player">
+                <div class="mix-player-controls">
+                  <button id="mix-prev" class="player-control" disabled><i class="player-icon">⏮</i></button>
+                  <button id="mix-play-pause" class="player-control" disabled><i class="player-icon">▶</i></button>
+                  <button id="mix-next" class="player-control" disabled><i class="player-icon">⏭</i></button>
+                </div>
+                <audio id="mix-player" controls></audio>
+                <div id="progress-container">
+                  <div id="progress-bar"></div>
+                  <div id="transition-markers"></div>
+                </div>
+                <div id="mix-visualizer"></div>
+                <div id="mix-info"></div>
+                <div id="current-track-info">
+                  <span id="current-track-position">0:00</span> / <span id="current-track-duration">0:00</span>
+                </div>
+              </div>
+              <div class="mix-details"></div>
+              <div class="mix-actions">
+                <button id="save-mix" class="action-button" disabled>Save This Mix</button>
+              </div>
+            </div>
+            
+            <div class="user-section">
+              <h3>Your Account</h3>
+              <div id="user-profile" class="user-profile">
+                <div class="profile-info">
+                  <p><strong>Name:</strong> <span id="profile-name"></span></p>
+                  <p><strong>Email:</strong> <span id="profile-email"></span></p>
+                  <p><strong>Mixes Created:</strong> <span id="profile-mix-count">0</span></p>
+                  <p><strong>Account Type:</strong> <span id="profile-account-type">Free</span></p>
+                </div>
+                <div class="saved-mixes">
+                  <h4>Your Saved Mixes</h4>
+                  <div id="saved-mixes-list"></div>
+                </div>
+                <div class="account-actions">
+                  <button id="logout-button" class="secondary-button">Log Out</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+    <% } else { %>
+      <div class="auth-status">
+        <p>Create an account to start mixing music</p>
+        
+        <div class="login-info-section">
+          <h3>🔑 Simplified Authentication System</h3>
+          <div class="login-info-box">
+            <div class="login-info-header">
+              <span class="login-icon">🔒</span>
+              <h4>Passwordless Login</h4>
+            </div>
+            <ul class="login-features">
+              <li><strong>No password required</strong> - just enter your name and email</li>
+              <li><strong>Easy access</strong> - use the same email to log back in anytime</li>
+              <li><strong>Automatic sessions</strong> - stay logged in for 14 days</li>
+              <li><strong>Instant registration</strong> - no email verification needed</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="registration-section">
+          <h3>Quick Registration / Login</h3>
+          <p>Enter your details below to create an account or log back in:</p>
+          
+          <form id="registration-form" class="registration-form">
+            <div class="form-group">
+              <label for="name">Your Name</label>
+              <input type="text" id="name" name="name" placeholder="Enter your name" required>
+            </div>
+            <div class="form-group">
+              <label for="email">Email Address</label>
+              <input type="email" id="email" name="email" placeholder="Enter your email" required>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="action-button">Sign In / Register</button>
+            </div>
+            <p class="form-note">
+              By registering, you agree to our Terms of Service and Privacy Policy.
+              We'll only use your email to identify you on our platform, not for marketing.
+            </p>
+          </form>
+        </div>
+        
+        <div class="features-section">
+          <h3>Free Features</h3>
+          <div class="features-grid">
+            <div class="feature-card">
+              <h4>🎵 Create AI Mixes</h4>
+              <p>Our AI analyzes BPM, key, and energy to create seamless track transitions</p>
+            </div>
+            <div class="feature-card">
+              <h4>☁️ Access Free Music</h4>
+              <p>Search and use tracks from SoundCloud without needing an account</p>
+            </div>
+            <div class="feature-card">
+              <h4>📤 Upload Your Music</h4>
+              <p>Add your own tracks to mix with SoundCloud music</p>
+            </div>
+            <div class="feature-card">
+              <h4>💾 Save Up To 5 Mixes</h4>
+              <p>Keep your favorite mixes to access later</p>
+            </div>
+          </div>
+          
+          <div class="premium-teaser">
+            <h4>🌟 Premium Features Coming Soon</h4>
+            <p>Unlimited saved mixes, higher quality audio, longer mixes, and more!</p>
+          </div>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM loaded, initializing VJ Visualizer');
+      
+      // Make sure the container exists
+      const vjContainer = document.getElementById('vj-container');
+      if (!vjContainer) {
+        console.error('VJ container element not found!');
+        return;
+      }
+      
+      // Initialize VJ Visualizer
+      try {
+        // Create new visualizer instance with options
+        window.vjVisualizer = new VJVisualizer({
+          initialStyle: 'neon',
+          initialIntensity: 0.7,
+          quality: 'auto',
+          useShaders: true,
+          contentMode: 'local'
+        });
+        
+        console.log('VJ Visualizer instance created');
+        
+        // Set up visualizer elements
+        const setupResult = window.vjVisualizer.setupVisualElements(vjContainer);
+        console.log('Visual elements setup result:', setupResult);
+        
+        // Start the visualizer (audio will be connected later when mixer is created)
+        const startResult = window.vjVisualizer.start();
+        console.log('Visualizer start result:', startResult);
+        
+        // Set content mode to local to ensure videos work
+        window.vjVisualizer.contentMode = 'local';
+        
+        // Force load content
+        setTimeout(() => {
+          console.log('Forcing initial content load');
+          window.vjVisualizer.loadContent({ force: true });
+        }, 1000);
+      } catch (err) {
+        console.error('Error initializing VJ Visualizer:', err);
+      }
+      
+      // Current user state
+      const isAuthenticated = <%= isAuthenticated %>;
+      const currentUserName = "<%= userName %>";
+      
+      // Source tab switching
+      const tabButtons = document.querySelectorAll('.tab-button');
+      const tabContents = document.querySelectorAll('.tab-content');
+      
+      if (tabButtons.length > 0) {
+        tabButtons.forEach(button => {
+          button.addEventListener('click', () => {
+            // Remove active class from all buttons and contents
+            tabButtons.forEach(b => b.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
+            
+            // Add active class to clicked button and corresponding content
+            button.classList.add('active');
+            const tabId = button.getAttribute('data-tab');
+            document.getElementById(`${tabId}-tab`).classList.add('active');
+          });
+        });
+      }
+      
+      // Registration form handling
+      const registrationForm = document.getElementById('registration-form');
+      if (registrationForm) {
+        // Check URL parameters for pre-filled values
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlName = urlParams.get('name');
+        const urlEmail = urlParams.get('email');
+        
+        // Pre-fill form if values exist in URL
+        if (urlName) {
+          document.getElementById('name').value = urlName;
+        }
+        
+        if (urlEmail) {
+          document.getElementById('email').value = urlEmail;
+        }
+        
+        // Auto-submit if both parameters are present
+        if (urlName && urlEmail) {
+          console.log('Auto-submitting with URL parameters:', { name: urlName, email: urlEmail });
+          
+          // Small delay to ensure the DOM is fully loaded
+          setTimeout(async () => {
+            try {
+              const response = await fetch('/api/user/register', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name: urlName, email: urlEmail })
+              });
+              
+              const data = await response.json();
+              
+              if (response.ok && data.success) {
+                console.log('Auto-login successful, refreshing page');
+                // Reload the page to show the authenticated view - using a full URL without parameters
+                window.location.href = window.location.protocol + '//' + window.location.host + window.location.pathname;
+              } else {
+                console.error('Auto-login failed:', data.error || 'Unknown error');
+                // Don't show alert for auto-login failure, just let the user submit the form manually
+              }
+            } catch (error) {
+              console.error('Auto-login error:', error);
+              // Don't show alert for auto-login failure, just let the user submit the form manually
+            }
+          }, 500);
+        }
+        
+        // Regular form submission handler
+        registrationForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const nameInput = document.getElementById('name');
+          const emailInput = document.getElementById('email');
+          
+          const name = nameInput.value.trim();
+          const email = emailInput.value.trim();
+          
+          if (!name || !email) {
+            alert('Please fill in all fields');
+            return;
+          }
+          
+          try {
+            const response = await fetch('/api/user/register', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ name, email })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+              // Reload the page to show the authenticated view - using a full URL without parameters
+              window.location.href = window.location.protocol + '//' + window.location.host + window.location.pathname;
+            } else {
+              alert(`Registration failed: ${data.error || 'Unknown error'}`);
+            }
+          } catch (error) {
+            console.error('Registration error:', error);
+            alert('Registration failed. Please try again.');
+          }
+        });
+      }
+      
+      // Fetch user profile if authenticated
+      if (isAuthenticated) {
+        fetchUserProfile();
+        fetchUploadedTracks();
+        fetchSavedMixes();
+      }
+      
+      // User profile fetching
+      async function fetchUserProfile() {
+        try {
+          const response = await fetch('/api/user/profile');
+          
+          if (!response.ok) {
+            throw new Error('Failed to fetch profile');
+          }
+          
+          const profileData = await response.json();
+          
+          // Update profile UI
+          document.getElementById('profile-name').textContent = profileData.name;
+          document.getElementById('profile-email').textContent = profileData.email;
+          document.getElementById('profile-mix-count').textContent = profileData.mixCount;
+          document.getElementById('profile-account-type').textContent = profileData.isPremium ? 'Premium' : 'Free';
+          
+        } catch (error) {
+          console.error('Error fetching profile:', error);
+        }
+      }
+      
+      // Fetch user's uploaded tracks
+      async function fetchUploadedTracks() {
+        try {
+          const uploadedTracksContainer = document.getElementById('uploaded-tracks');
+          
+          if (!uploadedTracksContainer) return;
+          
+          const response = await fetch('/api/upload/tracks');
+          
+          if (!response.ok) {
+            throw new Error('Failed to fetch uploaded tracks');
+          }
+          
+          const tracks = await response.json();
+          
+          if (tracks.length === 0) {
+            uploadedTracksContainer.innerHTML = '<p class="empty-message">You haven\'t uploaded any tracks yet</p>';
+            return;
+          }
+          
+          // Display tracks
+          uploadedTracksContainer.innerHTML = '';
+          tracks.forEach(track => {
+            const trackElement = document.createElement('div');
+            trackElement.className = 'track-item';
+            trackElement.innerHTML = `
+              <div class="track-info">
+                <h4>${track.title}</h4>
+                <p>${track.artist || 'Unknown artist'}</p>
+                <p class="track-detail">Duration: ${formatDuration(track.duration)}</p>
+                ${track.bpm ? `<p class="track-detail">BPM: ${track.bpm}</p>` : ''}
+              </div>
+              <div class="track-actions">
+                <button class="play-track" data-id="${track.id}">Play</button>
+                <button class="add-track" data-id="${track.id}" data-title="${track.title}" data-artist="${track.artist || 'Unknown'}">Add to Mix</button>
+                <button class="delete-track" data-id="${track.id}">Delete</button>
+              </div>
+            `;
+            uploadedTracksContainer.appendChild(trackElement);
+            
+            // Add event listeners for track actions
+            const playButton = trackElement.querySelector('.play-track');
+            const addButton = trackElement.querySelector('.add-track');
+            const deleteButton = trackElement.querySelector('.delete-track');
+            
+            // Play track
+            playButton.addEventListener('click', () => {
+              const audioPlayer = document.getElementById('audio-player') || document.createElement('audio');
+              audioPlayer.src = `/api/upload/stream/${track.id}`;
+              audioPlayer.controls = true;
+              audioPlayer.play();
+              
+              // If we created a new audio element, add it to the page
+              if (!document.getElementById('audio-player')) {
+                audioPlayer.id = 'audio-player';
+                const audioContainer = document.createElement('div');
+                audioContainer.className = 'audio-player';
+                audioContainer.appendChild(audioPlayer);
+                
+                const trackInfo = document.createElement('p');
+                trackInfo.textContent = `Playing: ${track.title}`;
+                audioContainer.appendChild(trackInfo);
+                
+                // Add before the track list
+                uploadedTracksContainer.parentNode.insertBefore(audioContainer, uploadedTracksContainer);
+              }
+            });
+            
+            // Add to mix
+            addButton.addEventListener('click', () => {
+              const trackId = addButton.dataset.id;
+              const trackTitle = addButton.dataset.title;
+              const trackArtist = addButton.dataset.artist;
+              
+              addTrackToMix(trackId, trackTitle, trackArtist, true);
+            });
+            
+            // Delete track
+            deleteButton.addEventListener('click', async () => {
+              if (confirm('Are you sure you want to delete this track?')) {
+                try {
+                  const response = await fetch(`/api/upload/track/${track.id}`, {
+                    method: 'DELETE'
+                  });
+                  
+                  if (response.ok) {
+                    // Remove from UI
+                    uploadedTracksContainer.removeChild(trackElement);
+                    
+                    // Show empty message if no tracks left
+                    if (uploadedTracksContainer.children.length === 0) {
+                      uploadedTracksContainer.innerHTML = '<p class="empty-message">You haven\'t uploaded any tracks yet</p>';
+                    }
+                  } else {
+                    alert('Failed to delete track');
+                  }
+                } catch (error) {
+                  console.error('Error deleting track:', error);
+                  alert('Error deleting track');
+                }
+              }
+            });
+          });
+          
+        } catch (error) {
+          console.error('Error fetching uploaded tracks:', error);
+          const uploadedTracksContainer = document.getElementById('uploaded-tracks');
+          uploadedTracksContainer.innerHTML = '<p class="error-message">Error loading your tracks</p>';
+        }
+      }
+      
+      // Fetch user's saved mixes
+      async function fetchSavedMixes() {
+        try {
+          const savedMixesContainer = document.getElementById('saved-mixes-list');
+          
+          if (!savedMixesContainer) return;
+          
+          const response = await fetch('/api/user/saved-mixes');
+          
+          if (!response.ok) {
+            throw new Error('Failed to fetch saved mixes');
+          }
+          
+          const mixes = await response.json();
+          
+          if (mixes.length === 0) {
+            savedMixesContainer.innerHTML = '<p class="empty-message">You haven\'t saved any mixes yet</p>';
+            return;
+          }
+          
+          // Display mixes
+          savedMixesContainer.innerHTML = '';
+          mixes.forEach(mix => {
+            const mixElement = document.createElement('div');
+            mixElement.className = 'saved-mix';
+            mixElement.innerHTML = `
+              <div class="mix-info">
+                <h5>${mix.name}</h5>
+                <p>Created: ${new Date(mix.date).toLocaleDateString()}</p>
+                <p>${mix.tracks.length} tracks - ${formatDuration(mix.totalDuration)}</p>
+              </div>
+              <div class="mix-actions">
+                <button class="load-mix" data-id="${mix._id}">Load</button>
+                <button class="delete-mix" data-id="${mix._id}">Delete</button>
+              </div>
+            `;
+            savedMixesContainer.appendChild(mixElement);
+            
+            // Add event listeners
+            const loadButton = mixElement.querySelector('.load-mix');
+            const deleteButton = mixElement.querySelector('.delete-mix');
+            
+            loadButton.addEventListener('click', () => {
+              // TODO: Implement loading a saved mix
+              alert('Loading saved mixes coming soon!');
+            });
+            
+            deleteButton.addEventListener('click', async () => {
+              if (confirm('Are you sure you want to delete this saved mix?')) {
+                try {
+                  const response = await fetch(`/api/user/saved-mixes/${mix._id}`, {
+                    method: 'DELETE'
+                  });
+                  
+                  if (response.ok) {
+                    savedMixesContainer.removeChild(mixElement);
+                    
+                    // Show empty message if no mixes left
+                    if (savedMixesContainer.children.length === 0) {
+                      savedMixesContainer.innerHTML = '<p class="empty-message">You haven\'t saved any mixes yet</p>';
+                    }
+                  } else {
+                    alert('Failed to delete mix');
+                  }
+                } catch (error) {
+                  console.error('Error deleting mix:', error);
+                  alert('Error deleting mix');
+                }
+              }
+            });
+          });
+          
+        } catch (error) {
+          console.error('Error fetching saved mixes:', error);
+          const savedMixesContainer = document.getElementById('saved-mixes-list');
+          savedMixesContainer.innerHTML = '<p class="error-message">Error loading your saved mixes</p>';
+        }
+      }
+      
+      // File upload handling
+      const uploadForm = document.getElementById('upload-form');
+      if (uploadForm) {
+        uploadForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const fileInput = document.getElementById('track-file');
+          const uploadProgress = document.getElementById('upload-progress');
+          const uploadMessage = document.getElementById('upload-message');
+          
+          if (!fileInput.files || fileInput.files.length === 0) {
+            uploadMessage.textContent = 'Please select a file to upload';
+            uploadMessage.className = 'error-message';
+            return;
+          }
+          
+          const file = fileInput.files[0];
+          const formData = new FormData();
+          formData.append('track', file);
+          
+          // Show progress bar
+          uploadProgress.style.display = 'block';
+          uploadProgress.querySelector('.progress-fill').style.width = '0%';
+          uploadMessage.textContent = 'Uploading...';
+          uploadMessage.className = '';
+          
+          try {
+            const xhr = new XMLHttpRequest();
+            
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (event) => {
+              if (event.lengthComputable) {
+                const percentComplete = (event.loaded / event.total) * 100;
+                uploadProgress.querySelector('.progress-fill').style.width = `${percentComplete}%`;
+              }
+            });
+            
+            // Handle response
+            xhr.onload = function() {
+              if (xhr.status === 201) {
+                // Success
+                const trackData = JSON.parse(xhr.responseText);
+                uploadMessage.textContent = `Successfully uploaded "${trackData.title}"`;
+                uploadMessage.className = 'success-message';
+                uploadForm.reset();
+                
+                // Refresh track list
+                fetchUploadedTracks();
+              } else {
+                // Error
+                uploadMessage.textContent = 'Upload failed: ' + (xhr.responseText ? JSON.parse(xhr.responseText).error : 'Unknown error');
+                uploadMessage.className = 'error-message';
+              }
+            };
+            
+            xhr.onerror = function() {
+              uploadMessage.textContent = 'Upload failed. Please try again.';
+              uploadMessage.className = 'error-message';
+            };
+            
+            // Send the request
+            xhr.open('POST', '/api/upload/track', true);
+            xhr.send(formData);
+            
+          } catch (error) {
+            console.error('Upload error:', error);
+            uploadMessage.textContent = 'Upload failed. Please try again.';
+            uploadMessage.className = 'error-message';
+          }
+        });
+      }
+      
+      // DJ Mix functionality
+      const searchInput = document.getElementById('search-input');
+      const searchButton = document.getElementById('search-button');
+      const searchResults = document.getElementById('search-results');
+      const selectedTracks = document.getElementById('selected-tracks');
+      const generateMixButton = document.getElementById('generate-mix');
+      const mixResult = document.getElementById('mix-result');
+      const mixDetails = document.querySelector('.mix-details');
+      const mixPlayer = document.getElementById('mix-player');
+      const mixInfo = document.getElementById('mix-info');
+      const saveMixButton = document.getElementById('save-mix');
+      
+      // Track selection management
+      const selectedTrackIds = new Set();
+      let currentMixData = null;
+      
+      // Search for tracks
+      if (searchButton && searchInput) {
+        searchButton.addEventListener('click', async () => {
+          const query = searchInput.value.trim();
+          if (!query) return;
+          
+          try {
+            searchResults.innerHTML = '<p>Searching...</p>';
+            
+            const response = await fetch(`/api/soundcloud/search?query=${encodeURIComponent(query)}`);
+            const tracks = await response.json();
+            
+            if (!Array.isArray(tracks) || tracks.length === 0) {
+              searchResults.innerHTML = '<p>No tracks found</p>';
+              return;
+            }
+            
+            // Display search results
+            searchResults.innerHTML = '';
+            tracks.forEach(track => {
+              const trackElement = document.createElement('div');
+              trackElement.className = 'track-item';
+              trackElement.innerHTML = `
+                <div class="track-info">
+                  <h4>${track.title}</h4>
+                  <p>${track.user?.username || 'Unknown artist'}</p>
+                  <p class="track-detail">Duration: ${formatDuration(track.duration)}</p>
+                  ${track.bpm ? `<p class="track-detail">BPM: ${track.bpm}</p>` : ''}
+                </div>
+                <button class="add-track" data-id="${track.id}" data-title="${track.title}" data-artist="${track.user?.username || 'Unknown'}">${selectedTrackIds.has(track.id.toString()) ? 'Remove' : 'Add to Mix'}</button>
+              `;
+              searchResults.appendChild(trackElement);
+              
+              // Add event listener to the add button
+              const addButton = trackElement.querySelector('.add-track');
+              addButton.addEventListener('click', () => {
+                const trackId = addButton.dataset.id;
+                const trackTitle = addButton.dataset.title;
+                const trackArtist = addButton.dataset.artist;
+                
+                if (selectedTrackIds.has(trackId)) {
+                  // Remove track
+                  removeTrackFromMix(trackId);
+                  addButton.textContent = 'Add to Mix';
+                } else {
+                  // Add track
+                  addTrackToMix(trackId, trackTitle, trackArtist, false);
+                  addButton.textContent = 'Remove';
+                }
+              });
+            });
+          } catch (error) {
+            console.error('Error searching tracks:', error);
+            searchResults.innerHTML = '<p>Error searching tracks</p>';
+          }
+        });
+      }
+      
+      // Add track to mix
+      function addTrackToMix(trackId, trackTitle, trackArtist, isUpload) {
+        selectedTrackIds.add(trackId);
+        updateSelectedTracks();
+        
+        // Add to the selected tracks display
+        const trackElement = document.createElement('div');
+        trackElement.className = 'selected-track';
+        trackElement.dataset.id = trackId;
+        trackElement.innerHTML = `
+          <div class="track-info">
+            <h4>${trackTitle}</h4>
+            <p>${trackArtist}</p>
+            ${isUpload ? '<span class="upload-badge">Your Upload</span>' : ''}
+          </div>
+          <button class="remove-track">Remove</button>
+        `;
+        
+        // Remove empty message if present
+        const emptyMessage = selectedTracks.querySelector('.empty-message');
+        if (emptyMessage) {
+          selectedTracks.removeChild(emptyMessage);
+        }
+        
+        selectedTracks.appendChild(trackElement);
+        
+        // Add remove event listener
+        const removeButton = trackElement.querySelector('.remove-track');
+        removeButton.addEventListener('click', () => {
+          removeTrackFromMix(trackId);
+          
+          // Update the search results button if visible
+          const searchAddButton = document.querySelector(`.add-track[data-id="${trackId}"]`);
+          if (searchAddButton) {
+            searchAddButton.textContent = 'Add to Mix';
+          }
+        });
+      }
+      
+      // Remove track from mix
+      function removeTrackFromMix(trackId) {
+        selectedTrackIds.delete(trackId);
+        const trackElement = selectedTracks.querySelector(`.selected-track[data-id="${trackId}"]`);
+        if (trackElement) {
+          selectedTracks.removeChild(trackElement);
+        }
+        updateSelectedTracks();
+        
+        // Show empty message if no tracks
+        if (selectedTrackIds.size === 0) {
+          selectedTracks.innerHTML = '<p class="empty-message">Add tracks to your mix by searching above</p>';
+        }
+      }
+      
+      // Update button state based on track selection
+      function updateSelectedTracks() {
+        if (generateMixButton) {
+          generateMixButton.disabled = selectedTrackIds.size < 2;
+        }
+      }
+      
+      // SoundCloud URL resolver functionality
+      const resolveUrlButton = document.getElementById('resolve-url-button');
+      const soundcloudUrlInput = document.getElementById('soundcloud-url');
+      const urlResult = document.getElementById('url-result');
+      
+      if (resolveUrlButton && soundcloudUrlInput) {
+        resolveUrlButton.addEventListener('click', async () => {
+          const url = soundcloudUrlInput.value.trim();
+          
+          if (!url) return;
+          
+          if (!url.includes('soundcloud.com')) {
+            urlResult.textContent = 'Please enter a valid SoundCloud URL';
+            urlResult.style.display = 'block';
+            return;
+          }
+          
+          try {
+            urlResult.textContent = 'Resolving SoundCloud URL...';
+            urlResult.style.display = 'block';
+            
+            const response = await fetch(`/api/soundcloud/resolve?url=${encodeURIComponent(url)}`);
+            
+            if (!response.ok) {
+              urlResult.textContent = 'Error: Could not resolve SoundCloud URL. Make sure it is a valid track URL.';
+              return;
+            }
+            
+            const trackData = await response.json();
+            
+            if (trackData && trackData.id) {
+              // Add to selected tracks if not already added
+              if (!selectedTrackIds.has(trackData.id.toString())) {
+                addTrackToMix(trackData.id.toString(), trackData.title, trackData.user?.username || 'Unknown', false);
+                
+                // Clear input and show success message
+                soundcloudUrlInput.value = '';
+                urlResult.textContent = `Added "${trackData.title}" to your mix`;
+              } else {
+                urlResult.textContent = 'This track is already in your mix';
+              }
+            } else {
+              urlResult.textContent = 'Error: Could not extract track data from the URL';
+            }
+          } catch (error) {
+            console.error('Error resolving URL:', error);
+            urlResult.textContent = 'Error: Could not resolve SoundCloud URL';
+          }
+        });
+      }
+      
+      // Generate mix
+      if (generateMixButton) {
+        generateMixButton.addEventListener('click', async () => {
+          if (selectedTrackIds.size < 2) return;
+          
+          try {
+            mixDetails.innerHTML = '<p>Generating your mix...</p>';
+            
+            const response = await fetch('/api/soundcloud/generate-mix', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                trackIds: Array.from(selectedTrackIds)
+              })
+            });
+            
+            const mixData = await response.json();
+            
+            if (response.ok) {
+              // Save mix data for later
+              currentMixData = mixData;
+              
+              // Enable save button
+              if (saveMixButton) {
+                saveMixButton.disabled = false;
+              }
+              
+              // Display mix details
+              const totalDuration = formatDuration(mixData.totalDuration);
+              const trackCount = mixData.tracks.length;
+              
+              mixDetails.innerHTML = `
+                <div class="mix-header">
+                  <p><strong>Total Duration:</strong> ${totalDuration}</p>
+                  <p><strong>Tracks:</strong> ${trackCount}</p>
+                </div>
+                <div class="mix-track-list">
+                  <h4>Track Order:</h4>
+                  <ol>
+                    ${mixData.tracks.map(track => `
+                      <li>
+                        <p><strong>${track.title}</strong> by ${track.user?.username || 'Unknown'}</p>
+                        <p class="track-detail">Duration: ${formatDuration(track.duration)}</p>
+                        ${track.bpm ? `<p class="track-detail">BPM: ${track.bpm}</p>` : ''}
+                      </li>
+                    `).join('')}
+                  </ol>
+                </div>
+                <div class="mix-transitions">
+                  <h4>Transitions:</h4>
+                  <ul>
+                    ${mixData.transitions.map(transition => `
+                      <li>
+                        <p>At ${formatDuration(transition.transitionPoint)}: 
+                        Transition from track ${transition.fromTrack} to ${transition.toTrack} 
+                        (BPM change: ${transition.bpmDifference > 0 ? '+' : ''}${transition.bpmDifference.toFixed(1)})</p>
+                      </li>
+                    `).join('')}
+                  </ul>
+                </div>
+              `;
+              
+              // Initialize mix player with proper controls
+              initializeMixPlayer(mixData);
+              
+              // Mark the first track as current
+              const trackListItems = document.querySelectorAll('.mix-track-list ol li');
+              if (trackListItems.length > 0) {
+                trackListItems[0].classList.add('current-track');
+              }
+            } else {
+              mixDetails.innerHTML = `<p>Error: ${mixData.error || 'Failed to generate mix'}</p>`;
+            }
+          } catch (error) {
+            console.error('Error generating mix:', error);
+            mixDetails.innerHTML = '<p>Error generating mix</p>';
+          }
+        });
+      }
+      
+      // Save mix functionality
+      if (saveMixButton) {
+        saveMixButton.addEventListener('click', async () => {
+          if (!currentMixData) return;
+          
+          // Prompt for mix name
+          const mixName = prompt('Enter a name for this mix:', 'My Mix');
+          
+          if (!mixName) return;
+          
+          try {
+            const response = await fetch('/api/user/save-mix', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: mixName,
+                tracks: currentMixData.tracks,
+                transitions: currentMixData.transitions,
+                totalDuration: currentMixData.totalDuration
+              })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+              alert('Mix saved successfully!');
+              // Refresh saved mixes list
+              fetchSavedMixes();
+              fetchUserProfile();
+            } else {
+              if (response.status === 403) {
+                alert('Free users can save up to 5 mixes. Upgrade to premium for unlimited mixes.');
+              } else {
+                alert(`Failed to save mix: ${result.error || 'Unknown error'}`);
+              }
+            }
+          } catch (error) {
+            console.error('Error saving mix:', error);
+            alert('Error saving mix. Please try again.');
+          }
+        });
+      }
+      
+      // Logout functionality
+      const logoutButton = document.getElementById('logout-button');
+      if (logoutButton) {
+        logoutButton.addEventListener('click', async () => {
+          try {
+            const response = await fetch('/api/user/logout', {
+              method: 'POST'
+            });
+            
+            if (response.ok) {
+              window.location.reload();
+            } else {
+              alert('Logout failed. Please try again.');
+            }
+          } catch (error) {
+            console.error('Logout error:', error);
+            alert('Logout failed. Please try again.');
+          }
+        });
+      }
+      
+      // Helper function to format duration from milliseconds
+      function formatDuration(ms) {
+        if (!ms) return 'Unknown duration';
+        
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      }
+      
+      // Advanced audio mixing functionality
+      class AudioMixer {
+        constructor() {
+          this.tracks = [];
+          this.transitions = [];
+          this.currentTrackIndex = 0;
+          this.audioContext = null;
+          this.gainNodes = [];
+          this.audioElements = [];
+          this.analyserNode = null;
+          this.visualizerData = null;
+          this.visualizerCanvas = null;
+          this.animationId = null;
+          this.isPlaying = false;
+          this.isCrossfading = false;
+          this.totalDuration = 0;
+          this.progressInterval = null;
+          this.transitionTime = 5000; // Crossfade duration in ms
+        }
+        
+        initialize(mixData) {
+          // Clean up previous instances
+          this.stop();
+          
+          // Initialize Web Audio API context
+          if (!this.audioContext) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            this.audioContext = new AudioContext();
+          }
+          
+          this.tracks = mixData.tracks;
+          this.transitions = mixData.transitions;
+          this.totalDuration = mixData.totalDuration;
+          this.currentTrackIndex = 0;
+          
+          // Create audio elements and gain nodes for each track
+          this.createAudioElements();
+          
+          // Set up the visualizer
+          this.setupVisualizer();
+          
+          // Create transition markers
+          this.createTransitionMarkers();
+          
+          // Enable player controls
+          const prevButton = document.getElementById('mix-prev');
+          const playPauseButton = document.getElementById('mix-play-pause');
+          const nextButton = document.getElementById('mix-next');
+          
+          prevButton.disabled = false;
+          playPauseButton.disabled = false;
+          nextButton.disabled = false;
+          
+          // Set up event listeners for player controls
+          prevButton.addEventListener('click', () => this.previousTrack());
+          playPauseButton.addEventListener('click', () => this.togglePlayPause());
+          nextButton.addEventListener('click', () => this.nextTrack());
+          
+          // Update player UI
+          this.updatePlayerInfo();
+        }
+        
+        createAudioElements() {
+          // Clear previous audio elements
+          this.gainNodes = [];
+          this.audioElements = [];
+          
+          // Create an audio element and gain node for each track
+          this.tracks.forEach((track, index) => {
+            const audio = new Audio();
+            audio.crossOrigin = 'anonymous';
+            audio.preload = 'auto';
+            
+            // Determine stream URL based on source
+            const streamUrl = track.uploaded
+              ? `/api/upload/stream/${track.id}`
+              : `/api/soundcloud/stream/${track.id}`;
+              
+            audio.src = streamUrl;
+            
+            // Create source and gain nodes
+            const source = this.audioContext.createMediaElementSource(audio);
+            const gainNode = this.audioContext.createGain();
+            
+            // Connect nodes: source -> gain -> destination
+            source.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            // Set initial volume (only the first track starts at full volume)
+            gainNode.gain.value = index === 0 ? 1 : 0;
+            
+            // Add error handling
+            audio.addEventListener('error', (e) => {
+              console.error(`Error loading track ${track.title}:`, e);
+              document.getElementById('mix-info').textContent = `Error loading track: ${track.title}`;
+            });
+            
+            // Add to arrays for tracking
+            this.audioElements.push(audio);
+            this.gainNodes.push(gainNode);
+            
+            // Set up transition to next track when this one reaches transition point
+            audio.addEventListener('timeupdate', () => {
+              // Find the transition for this track
+              const transition = this.transitions.find(t => t.fromTrack === track.id);
+              
+              if (transition && !this.isCrossfading) {
+                const currentTime = audio.currentTime * 1000; // Convert to ms
+                const transitionPoint = transition.transitionPoint;
+                
+                // Start transition when we reach the transition point
+                if (currentTime >= transitionPoint && currentTime < transitionPoint + 500) {
+                  this.isCrossfading = true;
+                  this.crossfadeToNext();
+                }
+              }
+              
+              // Update the progress bar
+              this.updateProgress();
+            });
+            
+            // Handle track end (fallback if transition doesn't work)
+            audio.addEventListener('ended', () => {
+              if (this.currentTrackIndex === index) {
+                this.nextTrack();
+              }
+            });
+          });
+        }
+        
+        setupVisualizer() {
+          // Set up audio analyser for visualization
+          this.analyserNode = this.audioContext.createAnalyser();
+          this.analyserNode.fftSize = 256;
+          this.visualizerData = new Uint8Array(this.analyserNode.frequencyBinCount);
+          
+          // Connect each gain node to the analyser (in parallel with destination)
+          this.gainNodes.forEach(gainNode => {
+            gainNode.connect(this.analyserNode);
+          });
+          
+          // Set up canvas for visualization
+          const visualizerElement = document.getElementById('mix-visualizer');
+          visualizerElement.innerHTML = ''; // Clear previous visualizer
+          
+          this.visualizerCanvas = document.createElement('canvas');
+          this.visualizerCanvas.width = visualizerElement.clientWidth;
+          this.visualizerCanvas.height = 60;
+          visualizerElement.appendChild(this.visualizerCanvas);
+          
+          // Start visualization
+          this.drawVisualizer();
+        }
+        
+        drawVisualizer() {
+          if (!this.analyserNode || !this.visualizerCanvas) return;
+          
+          const canvas = this.visualizerCanvas;
+          const ctx = canvas.getContext('2d');
+          const width = canvas.width;
+          const height = canvas.height;
+          
+          // Clear the canvas
+          ctx.clearRect(0, 0, width, height);
+          
+          // Get frequency data
+          this.analyserNode.getByteFrequencyData(this.visualizerData);
+          
+          // Draw the visualizer bars
+          const barWidth = width / this.visualizerData.length;
+          let x = 0;
+          
+          // Set gradient
+          const gradient = ctx.createLinearGradient(0, 0, 0, height);
+          gradient.addColorStop(0, '#ff5500');
+          gradient.addColorStop(1, '#ff8800');
+          ctx.fillStyle = gradient;
+          
+          // Draw each bar
+          for (let i = 0; i < this.visualizerData.length; i++) {
+            const barHeight = (this.visualizerData[i] / 255) * height;
+            ctx.fillRect(x, height - barHeight, barWidth - 1, barHeight);
+            x += barWidth;
+          }
+          
+          // Call next animation frame only if we're still playing
+          if (this.isPlaying) {
+            this.animationId = requestAnimationFrame(() => this.drawVisualizer());
+          }
+        }
+        
+        createTransitionMarkers() {
+          const container = document.getElementById('transition-markers');
+          container.innerHTML = '';
+          
+          // Calculate total mix duration
+          const totalDuration = this.totalDuration;
+          
+          // Create a marker for each transition
+          this.transitions.forEach(transition => {
+            // Find the track this transition is from
+            const fromTrack = this.tracks.find(t => t.id === transition.fromTrack);
+            
+            if (fromTrack) {
+              // Calculate the position as percentage of total mix duration
+              let currentPosition = 0;
+              
+              // Sum up durations of all tracks before this one
+              for (let i = 0; i < this.tracks.length; i++) {
+                const track = this.tracks[i];
+                if (track.id === fromTrack.id) {
+                  // Add the transition point to the current position
+                  currentPosition += transition.transitionPoint;
+                  break;
+                } else {
+                  // Add full track duration
+                  currentPosition += track.duration;
+                }
+              }
+              
+              const positionPercent = (currentPosition / totalDuration) * 100;
+              
+              // Create marker element
+              const marker = document.createElement('div');
+              marker.className = 'transition-marker';
+              marker.style.left = `${positionPercent}%`;
+              marker.title = `Transition at ${formatDuration(currentPosition)}`;
+              
+              container.appendChild(marker);
+            }
+          });
+        }
+        
+        play() {
+          if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+          }
+          
+          this.isPlaying = true;
+          this.audioElements[this.currentTrackIndex].play();
+          
+          // Update play/pause button
+          const playPauseButton = document.getElementById('mix-play-pause');
+          playPauseButton.querySelector('.player-icon').textContent = '⏸';
+          
+          // Start the visualizer
+          this.drawVisualizer();
+          
+          // Update player info every second
+          this.progressInterval = setInterval(() => this.updatePlayerInfo(), 1000);
+        }
+        
+        pause() {
+          this.isPlaying = false;
+          this.audioElements[this.currentTrackIndex].pause();
+          
+          // Update play/pause button
+          const playPauseButton = document.getElementById('mix-play-pause');
+          playPauseButton.querySelector('.player-icon').textContent = '▶';
+          
+          // Stop the visualizer
+          if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+          }
+          
+          // Clear progress interval
+          if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+            this.progressInterval = null;
+          }
+        }
+        
+        togglePlayPause() {
+          if (this.isPlaying) {
+            this.pause();
+          } else {
+            this.play();
+          }
+        }
+        
+        stop() {
+          this.isPlaying = false;
+          this.isCrossfading = false;
+          
+          // Stop and disconnect all audio elements
+          if (this.audioElements) {
+            this.audioElements.forEach(audio => {
+              audio.pause();
+              audio.currentTime = 0;
+            });
+          }
+          
+          // Clear the visualization
+          if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+          }
+          
+          // Clear progress interval
+          if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+            this.progressInterval = null;
+          }
+          
+          // Close audio context
+          if (this.audioContext && this.audioContext.state !== 'closed') {
+            // Just suspend instead of close to allow reuse
+            this.audioContext.suspend();
+          }
+          
+          // Reset UI
+          const playPauseButton = document.getElementById('mix-play-pause');
+          if (playPauseButton) {
+            playPauseButton.querySelector('.player-icon').textContent = '▶';
+          }
+        }
+        
+        crossfadeToNext() {
+          const currentIndex = this.currentTrackIndex;
+          const nextIndex = (currentIndex + 1) % this.tracks.length;
+          
+          // Start the next track
+          this.audioElements[nextIndex].play();
+          
+          // Perform the crossfade
+          const startTime = this.audioContext.currentTime;
+          const endTime = startTime + (this.transitionTime / 1000);
+          
+          // Fade out current track
+          this.gainNodes[currentIndex].gain.setValueAtTime(1, startTime);
+          this.gainNodes[currentIndex].gain.linearRampToValueAtTime(0, endTime);
+          
+          // Fade in next track
+          this.gainNodes[nextIndex].gain.setValueAtTime(0, startTime);
+          this.gainNodes[nextIndex].gain.linearRampToValueAtTime(1, endTime);
+          
+          // Wait for transition to complete, then update the current track
+          setTimeout(() => {
+            // Pause the previous track
+            this.audioElements[currentIndex].pause();
+            
+            // Update the current track index
+            this.currentTrackIndex = nextIndex;
+            this.isCrossfading = false;
+            
+            // Update player UI
+            this.updatePlayerInfo();
+            
+            // Highlight current track in the track list
+            this.updateCurrentTrackHighlight();
+          }, this.transitionTime);
+        }
+        
+        nextTrack() {
+          if (this.tracks.length <= 1) return;
+          
+          // Immediately move to next track (no smooth transition)
+          const currentIndex = this.currentTrackIndex;
+          const nextIndex = (currentIndex + 1) % this.tracks.length;
+          
+          // Pause current track
+          this.audioElements[currentIndex].pause();
+          this.gainNodes[currentIndex].gain.value = 0;
+          
+          // Prepare next track
+          this.audioElements[nextIndex].currentTime = 0;
+          this.gainNodes[nextIndex].gain.value = 1;
+          
+          // Update the current track index
+          this.currentTrackIndex = nextIndex;
+          
+          // Play if we were already playing
+          if (this.isPlaying) {
+            this.audioElements[nextIndex].play();
+          }
+          
+          // Update player UI
+          this.updatePlayerInfo();
+          
+          // Highlight current track in the track list
+          this.updateCurrentTrackHighlight();
+        }
+        
+        previousTrack() {
+          if (this.tracks.length <= 1) return;
+          
+          // If we're past the first 3 seconds of the track, just restart it
+          if (this.audioElements[this.currentTrackIndex].currentTime > 3) {
+            this.audioElements[this.currentTrackIndex].currentTime = 0;
+            return;
+          }
+          
+          // Otherwise, go to the previous track
+          const currentIndex = this.currentTrackIndex;
+          const prevIndex = (currentIndex - 1 + this.tracks.length) % this.tracks.length;
+          
+          // Pause current track
+          this.audioElements[currentIndex].pause();
+          this.gainNodes[currentIndex].gain.value = 0;
+          
+          // Prepare previous track
+          this.audioElements[prevIndex].currentTime = 0;
+          this.gainNodes[prevIndex].gain.value = 1;
+          
+          // Update the current track index
+          this.currentTrackIndex = prevIndex;
+          
+          // Play if we were already playing
+          if (this.isPlaying) {
+            this.audioElements[prevIndex].play();
+          }
+          
+          // Update player UI
+          this.updatePlayerInfo();
+          
+          // Highlight current track in the track list
+          this.updateCurrentTrackHighlight();
+        }
+        
+        updatePlayerInfo() {
+          const currentTrack = this.tracks[this.currentTrackIndex];
+          const mixInfo = document.getElementById('mix-info');
+          const currentPosition = document.getElementById('current-track-position');
+          const currentDuration = document.getElementById('current-track-duration');
+          
+          // Update track info display
+          mixInfo.textContent = `Playing: ${currentTrack.title} by ${currentTrack.user?.username || 'Unknown'}`;
+          
+          // Update time display
+          const audio = this.audioElements[this.currentTrackIndex];
+          const position = formatDuration(audio.currentTime * 1000);
+          const duration = formatDuration(currentTrack.duration);
+          
+          currentPosition.textContent = position;
+          currentDuration.textContent = duration;
+          
+          // Update standard audio element for consistency
+          const mixPlayer = document.getElementById('mix-player');
+          mixPlayer.src = audio.src;
+          
+          // Sync the players if needed
+          if (Math.abs(mixPlayer.currentTime - audio.currentTime) > 0.5) {
+            mixPlayer.currentTime = audio.currentTime;
+          }
+        }
+        
+        updateProgress() {
+          const audio = this.audioElements[this.currentTrackIndex];
+          const progressBar = document.getElementById('progress-bar');
+          
+          if (audio && progressBar) {
+            const percent = (audio.currentTime / (audio.duration || 1)) * 100;
+            progressBar.style.width = `${percent}%`;
+          }
+        }
+        
+        updateCurrentTrackHighlight() {
+          // Remove highlight from all tracks
+          const trackListItems = document.querySelectorAll('.mix-track-list ol li');
+          trackListItems.forEach(item => item.classList.remove('current-track'));
+          
+          // Add highlight to current track
+          if (trackListItems[this.currentTrackIndex]) {
+            trackListItems[this.currentTrackIndex].classList.add('current-track');
+          }
+        }
+      }
+      
+      // Global mixer instance
+      let mixer = null;
+      
+      // Initialize the mix player with enhanced AI mixing
+      function initializeMixPlayer(mixData) {
+        // Add advanced transition info to the UI
+        addAdvancedMixInfo(mixData);
+        
+        // Create mixer if it doesn't exist, otherwise initialize the existing one
+        if (!mixer) {
+          console.log("Creating new AI AudioMixer instance");
+          mixer = new AudioMixer();
+        }
+        
+        // Initialize with the mix data
+        mixer.initialize(mixData);
+        
+        // Initialize the VJ visualizer if it doesn't exist
+        initializeVisualizer(mixer);
+        
+        // Auto-start the mix
+        mixer.play();
+        
+        // Log advanced analysis availability
+        console.log("Mix initialized with advanced analysis:", mixData.hasAdvancedAnalysis);
+      }
+      
+      /**
+       * Initialize the VJ visualizer
+       * @param {AudioMixer} mixer - The audio mixer instance
+       */
+      function initializeVisualizer(mixer) {
+        console.log("Connecting audio to VJ Visualizer");
+        
+        // Connect audio to the existing visualizer
+        if (window.vjVisualizer && mixer.audioContext) {
+          console.log("VJ Visualizer and audio context available");
+          
+          // Get access to AudioContext and AnalyserNode from mixer
+          const audioContext = mixer.audioContext;
+          const analyserNode = mixer.analyserNode;
+          
+          // Check that analyzer is properly configured
+          if (!analyserNode) {
+            console.error("Analyzer node not available in mixer");
+            return;
+          }
+          
+          console.log("Initializing VJ Visualizer audio with FFT size:", analyserNode.fftSize);
+          
+          // Initialize audio with mixer's audio context and analyser node
+          window.vjVisualizer.initializeAudio(audioContext, analyserNode);
+          
+          // Make sure the analyser is actually capturing audio data by connecting
+          // audio output nodes to the analyser again (this ensures the connection is working)
+          if (mixer.gainNodes) {
+            console.log("Connecting gain nodes to analyzer");
+            mixer.gainNodes.forEach((gainNode, index) => {
+              try {
+                gainNode.connect(analyserNode);
+                console.log(`Connected gain node ${index} to analyzer`);
+              } catch (err) {
+                console.error(`Error connecting gain node ${index}:`, err);
+              }
+            });
+          }
+          
+          // Restart the VJ visualizer to ensure it's active
+          if (!window.vjVisualizer.isActive) {
+            console.log("Starting VJ visualizer");
+            window.vjVisualizer.start();
+          } else {
+            console.log("VJ visualizer already active");
+          }
+          
+          console.log("VJ Visualizer audio connected successfully");
+        } else {
+          console.error("Cannot connect audio to VJ Visualizer:", {
+            "vjVisualizerExists": !!window.vjVisualizer,
+            "audioContextExists": !!(mixer && mixer.audioContext)
+          });
+        }
+      }
+      
+      /**
+       * Add advanced mix information to the UI
+       * @param {Object} mixData - Mix data from the server
+       */
+      function addAdvancedMixInfo(mixData) {
+        // Find the mix details section
+        const mixDetails = document.querySelector('.mix-details');
+        
+        // Create a section for transition information
+        const transitionInfo = document.createElement('div');
+        transitionInfo.className = 'mix-transition-info';
+        transitionInfo.innerHTML = `
+          <h4>Advanced AI Mixing Info</h4>
+          <p>This mix uses advanced AI analysis for optimal track ordering and transitions.</p>
+          
+          ${mixData.hasAdvancedAnalysis ? 
+            '<p>✓ Enhanced DJ features enabled: beatmatching, key detection, harmonic mixing</p>' : 
+            '<p>Basic DJ features active. Upload more tracks for enhanced analysis.</p>'
+          }
+          
+          <div class="transition-type-legend">
+            <div class="transition-type-item">
+              <div class="transition-type-color beatmatch"></div>
+              <span>Beatmatch</span>
+            </div>
+            <div class="transition-type-item">
+              <div class="transition-type-color harmonic"></div>
+              <span>Harmonic</span>
+            </div>
+            <div class="transition-type-item">
+              <div class="transition-type-color tempo"></div>
+              <span>Tempo Adjust</span>
+            </div>
+            <div class="transition-type-item">
+              <div class="transition-type-color cut"></div>
+              <span>Cut</span>
+            </div>
+            <div class="transition-type-item">
+              <div class="transition-type-color fade"></div>
+              <span>Fade</span>
+            </div>
+          </div>
+        `;
+        
+        // Add after the existing mix details
+        mixDetails.appendChild(transitionInfo);
+      }
+      
+      // Enhanced theme switcher functionality
+      const themeToggle = document.getElementById('theme-toggle');
+      
+      if (themeToggle) {
+        // Function to apply theme
+        const applyTheme = (themeName) => {
+          // Set the theme attribute on both html and body elements for maximum compatibility
+          document.documentElement.setAttribute('data-theme', themeName);
+          document.body.setAttribute('data-theme', themeName);
+          
+          // Store the theme preference
+          localStorage.setItem('theme', themeName);
+          
+          // Update the toggle state
+          if (themeToggle) {
+            themeToggle.checked = themeName === 'dark';
+          }
+          
+          // Update meta theme-color for mobile browsers
+          const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+          if (metaThemeColor) {
+            metaThemeColor.setAttribute('content', themeName === 'dark' ? '#121212' : '#ff5500');
+          }
+          
+          console.log('Theme applied:', themeName);
+        };
+        
+        // Check for saved theme preference, OS preference, or use default light theme
+        const getSavedTheme = () => {
+          // First check URL parameters
+          const urlParams = new URLSearchParams(window.location.search);
+          const themeParam = urlParams.get('theme');
+          if (themeParam === 'dark' || themeParam === 'light') {
+            return themeParam;
+          }
+          
+          // Then check localStorage
+          const savedTheme = localStorage.getItem('theme');
+          if (savedTheme) return savedTheme;
+          
+          // Then check OS preference
+          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return 'dark';
+          }
+          
+          // Default to light
+          return 'light';
+        };
+        
+        // Apply the saved theme on page load
+        const initialTheme = getSavedTheme();
+        applyTheme(initialTheme);
+        
+        // Add event listener for theme toggle
+        themeToggle.addEventListener('change', function(e) {
+          const newTheme = e.target.checked ? 'dark' : 'light';
+          applyTheme(newTheme);
+        });
+        
+        // Listen for OS theme changes
+        if (window.matchMedia) {
+          window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+            if (!localStorage.getItem('theme')) { // Only auto-switch if user hasn't explicitly set a preference
+              applyTheme(e.matches ? 'dark' : 'light');
+            }
+          });
+        }
+      }
+    });
+  </script>
+</body>
+</html>

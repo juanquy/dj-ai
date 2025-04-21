@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DJAI - VJ Visualizer Help</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1, h2, h3 {
+      color: #ff5500;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    h2 {
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 0.5rem;
+    }
+    
+    p {
+      margin-bottom: 1rem;
+    }
+    
+    ul, ol {
+      margin-bottom: 1.5rem;
+      padding-left: 1.5rem;
+    }
+    
+    li {
+      margin-bottom: 0.5rem;
+    }
+    
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin: 2rem 0;
+    }
+    
+    .feature-card {
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    
+    .feature-card h3 {
+      margin-top: 0;
+      margin-bottom: 1rem;
+    }
+    
+    .tip {
+      background-color: #fff8e1;
+      border-left: 4px solid #ffca28;
+      padding: 1rem;
+      margin: 1.5rem 0;
+      border-radius: 4px;
+    }
+    
+    .performance-note {
+      background-color: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 1rem;
+      margin: 1.5rem 0;
+      border-radius: 4px;
+    }
+    
+    .back-button {
+      display: inline-block;
+      margin-top: 2rem;
+      padding: 0.75rem 1.5rem;
+      background-color: #ff5500;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    
+    .back-button:hover {
+      background-color: #e04c00;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+    }
+    
+    th, td {
+      border: 1px solid #ddd;
+      padding: 0.75rem;
+      text-align: left;
+    }
+    
+    th {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>DJAI VJ Visualizer Help</h1>
+    
+    <p>
+      The DJAI VJ Visualizer allows you to add professional VJ-style visual effects to your AI mixes.
+      These visuals react to the music in real-time, creating an immersive audio-visual experience.
+    </p>
+    
+    <h2>Getting Started</h2>
+    <p>
+      The VJ Visualizer is automatically enabled when you generate a mix.
+      You can control it using the floating panel in the bottom right corner of the screen.
+    </p>
+    
+    <div class="tip">
+      <strong>Tip:</strong> If you don't see the visualizer, check if it's enabled by toggling the "Enable Visuals" switch in the VJ Controls panel.
+    </div>
+    
+    <h2>Visualization Types</h2>
+    <p>
+      You can choose from several different visualization styles:
+    </p>
+    
+    <table>
+      <tr>
+        <th>Visualization</th>
+        <th>Description</th>
+      </tr>
+      <tr>
+        <td>Waveform</td>
+        <td>Classic audio waveform display that reacts to music amplitude</td>
+      </tr>
+      <tr>
+        <td>Particles</td>
+        <td>Dynamic particle system that pulses and flows with the beat</td>
+      </tr>
+      <tr>
+        <td>Spectrum</td>
+        <td>Frequency spectrum analyzer with colorful bars</td>
+      </tr>
+      <tr>
+        <td>Tunnel</td>
+        <td>3D tunnel effect that pulses to the beat</td>
+      </tr>
+      <tr>
+        <td>Gradient</td>
+        <td>Flowing color gradients that morph with the music</td>
+      </tr>
+    </table>
+    
+    <h2>Control Features</h2>
+    
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>Color Schemes</h3>
+        <p>Choose from different color palettes to match your mood or style</p>
+      </div>
+      
+      <div class="feature-card">
+        <h3>Intensity</h3>
+        <p>Adjust how strongly the visuals react to the music</p>
+      </div>
+      
+      <div class="feature-card">
+        <h3>Beat Sensitivity</h3>
+        <p>Fine-tune how the visualizer detects and responds to beats</p>
+      </div>
+      
+      <div class="feature-card">
+        <h3>Video Backgrounds</h3>
+        <p>Optional video backdrops that enhance the visual experience</p>
+      </div>
+      
+      <div class="feature-card">
+        <h3>Quality Settings</h3>
+        <p>Adjust rendering quality to optimize for performance</p>
+      </div>
+      
+      <div class="feature-card">
+        <h3>Glow Effects</h3>
+        <p>Add beautiful glow effects to enhance the visuals</p>
+      </div>
+    </div>
+    
+    <h2>Performance Tips</h2>
+    
+    <p>
+      The VJ Visualizer is designed to work on most modern devices, but complex visualizations can be resource-intensive.
+      Here are some tips to improve performance:
+    </p>
+    
+    <ol>
+      <li>Use the "Auto" quality setting to automatically adjust based on your device's performance</li>
+      <li>Disable "Glow Effect" on lower-end devices</li>
+      <li>The "Particles" visualization is the most resource-intensive; use others if you experience lag</li>
+      <li>Video backgrounds can be disabled to improve performance</li>
+      <li>Reduce the browser window size if needed for smoother performance</li>
+    </ol>
+    
+    <div class="performance-note">
+      <strong>Note:</strong> The visualizer uses WebGL for some effects when available. If your device doesn't support WebGL, the visualizer will automatically use Canvas-based rendering instead.
+    </div>
+    
+    <h2>Keyboard Shortcuts</h2>
+    
+    <table>
+      <tr>
+        <th>Key</th>
+        <th>Action</th>
+      </tr>
+      <tr>
+        <td>V</td>
+        <td>Toggle visualizer on/off</td>
+      </tr>
+      <tr>
+        <td>B</td>
+        <td>Toggle video background</td>
+      </tr>
+      <tr>
+        <td>N</td>
+        <td>Next video background</td>
+      </tr>
+      <tr>
+        <td>G</td>
+        <td>Toggle glow effect</td>
+      </tr>
+      <tr>
+        <td>1-5</td>
+        <td>Switch between visualization types</td>
+      </tr>
+    </table>
+    
+    <h2>Troubleshooting</h2>
+    
+    <p>If you encounter issues with the visualizer:</p>
+    
+    <ul>
+      <li>Make sure your browser is up to date</li>
+      <li>Try refreshing the page</li>
+      <li>Disable other browser extensions that might interfere</li>
+      <li>Use the "Low" quality setting on older devices</li>
+      <li>If the visualizer isn't appearing, check if hardware acceleration is enabled in your browser</li>
+    </ul>
+    
+    <a href="/" class="back-button">Back to DJAI</a>
+  </div>
+</body>
+</html>

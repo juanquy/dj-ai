@@ -1,0 +1,248 @@
+/* Advanced DJ controls styling */
+
+.eq-controls {
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eq-sliders {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+}
+
+.eq-slider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.eq-slider label {
+  font-size: 0.8em;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.tempo-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tempo-control label {
+  min-width: 60px;
+  font-weight: bold;
+}
+
+#tempo-value {
+  min-width: 40px;
+  text-align: right;
+}
+
+.beatmatch-toggle {
+  display: flex;
+  align-items: center;
+  margin-top: 5px;
+}
+
+.beatmatch-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: #ddd;
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff5500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff5500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  background: #ff7700;
+}
+
+.slider::-moz-range-thumb:hover {
+  background: #ff7700;
+}
+
+/* Transition markers */
+.transition-marker {
+  position: absolute;
+  width: 4px;
+  height: 20px;
+  background-color: rgba(255, 85, 0, 0.8);
+  border-radius: 2px;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+
+.transition-marker.beatmatch, 
+.transition-marker.beatmatch_blend {
+  background-color: #00cc66;
+}
+
+.transition-marker.harmonic_fade {
+  background-color: #00aaff;
+}
+
+.transition-marker.tempo_adjust {
+  background-color: #ffaa00;
+}
+
+.transition-marker.cut_eq {
+  background-color: #ff3366;
+}
+
+.transition-marker .transition-icon {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: white;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: none;
+}
+
+.transition-marker:hover .transition-icon {
+  display: block;
+}
+
+/* Current track highlight */
+.mix-track-list ol li.current-track {
+  background-color: rgba(255, 85, 0, 0.2);
+  border-left: 3px solid #ff5500;
+  padding-left: 12px;
+  transition: all 0.3s ease;
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .slider {
+  background: #444;
+}
+
+[data-theme="dark"] .eq-controls {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Additional mix details section */
+.mix-transition-info {
+  margin-top: 20px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.mix-transition-info h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #ff5500;
+}
+
+.transition-type-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.transition-type-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.85em;
+}
+
+.transition-type-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.transition-type-color.beatmatch {
+  background-color: #00cc66;
+}
+
+.transition-type-color.harmonic {
+  background-color: #00aaff;
+}
+
+.transition-type-color.tempo {
+  background-color: #ffaa00;
+}
+
+.transition-type-color.cut {
+  background-color: #ff3366;
+}
+
+.transition-type-color.fade {
+  background-color: #ff5500;
+}
+
+/* Enhanced visualizer */
+#mix-visualizer {
+  margin-top: 15px;
+  position: relative;
+}
+
+#mix-visualizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255, 85, 0, 0.5), transparent);
+}
+
+#mix-visualizer canvas {
+  width: 100%;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .eq-sliders {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .tempo-control {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

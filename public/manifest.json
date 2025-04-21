@@ -1,0 +1,16 @@
+{
+  "name": "DJAI - Automatic AI DJ",
+  "short_name": "DJAI",
+  "description": "Mix SoundCloud tracks with AI-powered DJ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ff5500",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
